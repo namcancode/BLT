@@ -45,7 +45,7 @@
 	"base_mod_check_for_updates_now_desc" : "Немедленно проверить сервер на обновления для $mod_name",
 
 	"base_mod_updates_show_update_available" : "$mod_name Обновление Доступно",
-	"base_mod_updates_show_update_available_message" : "Обновление для $mod_name доступно!\nМожно настроить автоматическую загрузку, посетив Менджер Обновлений в левом нижнем углу!",
+	"base_mod_updates_show_update_available_message" : "Обновление для $mod_name доступно!\nМожно настроить автоматическую загрузку, посетив Менеджер Обновлений в левом нижнем углу!",
 
 	"base_mod_updates_update_mod_now" : "Обновить $mod_name",
 	"base_mod_update_update_available" : "Доступно обновление для $mod_name!\nХотите обновить $mod_name прямо сейчас?",
@@ -75,6 +75,6 @@
 	"base_language_de" : "German",
 	"base_language_fr" : "French",
 	"base_language_ru" : "Русский",
-	"base_language_tr" : "Turkish",
+	"base_language_tr" : "Turkish"
 
 }
