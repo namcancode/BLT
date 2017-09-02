@@ -100,8 +100,6 @@ function Hooks:Call( key, ... )
 	if not self._registered_hooks[key] then
 		return
 	end
-	
-	-- print("[Hooks] Call: ", key, unpack({...}))
 
 	for k, v in pairs(self._registered_hooks[key]) do
 		if v then
