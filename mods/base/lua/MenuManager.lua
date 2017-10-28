@@ -1,7 +1,6 @@
 
 CloneClass( MenuManager )
 CloneClass( MenuCallbackHandler )
-CloneClass( ModMenuCreator )
 CloneClass( MenuModInfoGui )
 
 Hooks:RegisterHook( "MenuManagerInitialize" )
@@ -106,28 +105,6 @@ function MenuManager._base_process_menu( menu_manager, menu_names, parent_menu_n
 
 end
 
--- Add lua mods menu
-function ModMenuCreator.modify_node(self, original_node, data)
-
-	ModMenuCreator._mod_menu_modifies = {}
-
-	local node_name = original_node._parameters.name
-	if self._mod_menu_modifies then
-		if self._mod_menu_modifies[node_name] then
-
-			local func = self._mod_menu_modifies[node_name]
-			local node = original_node
-			self[func](self, node, data)
-
-			return node
-
-		end
-	end
-
-	return self.orig.modify_node(self, original_node, data)
-
-end
-
 -- Create this function if it doesn't exist
 function MenuCallbackHandler.can_toggle_chat( self )
 	if managers and managers.menu then
@@ -193,4 +170,23 @@ function MenuCallbackHandler:blt_choose_language( item )
 	if BLT.Localization then
 		BLT.Localization:set_language( item:value() )
 	end
+end
+
+--------------------------------------------------------------------------------
+-- Menu Initiator for the Mod Options so that localization shows the selected language
+
+BLTModOptionsInitiator = BLTModOptionsInitiator or class( MenuInitiatorBase )
+function BLTModOptionsInitiator:modify_node( node )
+
+	local localization_item = node:item( "blt_localization_choose" )
+	if localization_item and BLT.Localization then
+		localization_item:set_value( tostring( BLT.Localization:get_language().language ) )
+	end
+
+	return node
+
+end
+
+function BLTModOptionsInitiator:refresh_node( node )
+	self:modify_node( node )
 end

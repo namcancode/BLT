@@ -320,7 +320,7 @@ function BLTDownloadControl:init( panel, parameters )
 		h = self._info_panel:h() - padding * 3,
 	})
 
-	local state = self._panel:text({
+	local state = self._info_panel:text({
 		name = "state",
 		font_size = small_font_size,
 		font = small_font,
@@ -398,16 +398,20 @@ end
 
 function BLTDownloadControl:mouse_clicked( button, x, y )
 
-	if self._download_panel:inside( x, y ) then
-		if not BLT.Downloads:get_download( self._parameters.update ) then
-			BLT.Downloads:start_download( self._parameters.update )
+	if button == Idstring( "0" ) then -- left click
+
+		if self._download_panel:inside( x, y ) then
+			if not BLT.Downloads:get_download( self._parameters.update ) then
+				BLT.Downloads:start_download( self._parameters.update )
+				return true
+			end
+		end
+
+		if self._patch_panel:inside( x, y ) then
+			self._parameters.update:ViewPatchNotes()
 			return true
 		end
-	end
 
-	if self._patch_panel:inside( x, y ) then
-		self._parameters.update:ViewPatchNotes()
-		return true
 	end
 
 end
