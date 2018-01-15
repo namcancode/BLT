@@ -41,6 +41,7 @@ BLT:Require("req/utils/json-1.0")
 BLT:Require("req/utils/json-0.9")
 BLT:Require("req/utils/json")
 BLT:Require("req/core/Hooks")
+BLT:Require("req/supermod/BLTSuperMod")
 BLT:Require("req/BLTMod")
 BLT:Require("req/BLTUpdate")
 BLT:Require("req/BLTModDependency")
@@ -52,6 +53,7 @@ BLT:Require("req/BLTLocalization")
 BLT:Require("req/BLTNotificationsManager")
 BLT:Require("req/BLTPersistScripts")
 BLT:Require("req/BLTKeybindsManager")
+BLT:Require("req/xaudio/XAudio")
 
 -- BLT base functions
 function BLT:Initialize()
@@ -82,6 +84,11 @@ function BLT:Setup()
 	self.PersistScripts = BLTPersistScripts:new()
 	self.Localization = BLTLocalization:new()
 	self.Notifications = BLTNotificationsManager:new()
+
+	-- Create the required base directories, if necessary
+	self:CheckDirectory(BLTModManager.Constants:DownloadsDirectory())
+	self:CheckDirectory(BLTModManager.Constants:LogsDirectory())
+	self:CheckDirectory(BLTModManager.Constants:SavesDirectory())
 
 	-- Initialization functions
 	self.Logs:CleanLogs()
@@ -217,6 +224,14 @@ function BLT:ProcessModsList( mods_list )
 
 	return mods_list
 
+end
+
+function BLT:CheckDirectory(path)
+	path = path:sub(1, #path - 1)
+	if not file.DirectoryExists(path) then
+		log("[BLT] Creating missing directory " .. path)
+		file.CreateDirectory(path)
+	end
 end
 
 -- Perform startup

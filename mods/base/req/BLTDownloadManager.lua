@@ -87,12 +87,12 @@ function BLTDownloadManager:start_download( update )
 
 	-- Check if this update is allowed to be updated by the download manager
 	if update:DisallowsUpdate() then
-		MenuCallbackHandler[ update:GetDisallowCallback() ]( MenuCallbackHandler )
+		MenuCallbackHandler[ update:GetDisallowCallback() ]( MenuCallbackHandler, update )
 		return false
 	end
 
 	-- Start the download
-	local url = "http://download.paydaymods.com/download/latest/" .. update:GetId()
+	local url = update:GetDownloadURL()
 	local http_id = dohttpreq( url, callback(self, self, "clbk_download_finished"), callback(self, self, "clbk_download_progress") )
 
 	-- Cache the download for access
@@ -126,7 +126,12 @@ function BLTDownloadManager:clbk_download_finished( data, http_id )
 			end
 		end
 
-		local temp_dir = Application:nice_path( download.update:GetInstallDirectory() .. "_temp" )
+		local install_dir = download.update:GetInstallDirectory()
+		local temp_dir = Application:nice_path( install_dir .. "_temp" )
+		if install_dir == BLTModManager.Constants:ModsDirectory() then
+			temp_dir = Application:nice_path( BLTModManager.Constants:DownloadsDirectory() .. "_temp" )
+		end
+
 		local file_path = Application:nice_path( BLTModManager.Constants:DownloadsDirectory() .. tostring(download.update:GetId()) .. ".zip" )
 		local temp_install_dir = Application:nice_path( temp_dir .. "/" .. download.update:GetInstallFolder() )
 		local install_path = Application:nice_path( download.update:GetInstallDirectory() .. download.update:GetInstallFolder() )
