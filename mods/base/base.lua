@@ -1,3 +1,4 @@
+local DEBUG_MODE = false
 
 -- Create console
 if false then
@@ -15,7 +16,7 @@ local io = io
 local file = file
 
 -- BLT Global table
-_G.BLT = { version = 2.0 }
+_G.BLT = { version = 2.0, DEBUG_MODE = DEBUG_MODE }
 _G.BLT.Base = {}
 
 _G.print = function(...)
@@ -124,6 +125,7 @@ end
 function BLT:RunHookFile( path, hook_data )
 	rawset( _G, BLTModManager.Constants.required_script_global, path or false )
 	rawset( _G, BLTModManager.Constants.mod_path_global, hook_data.mod:GetPath() or false )
+	rawset( _G, BLTModManager.Constants.mod_instance_global, hook_data.mod or false )
 	dofile( hook_data.mod:GetPath() .. hook_data.script )
 end
 

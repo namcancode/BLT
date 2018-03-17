@@ -9,9 +9,15 @@ c.DYNAMIC_LOAD_TYPES = {
 
 local _dynamic_unloaded_assets = {}
 local _flush_assets
+local _currently_loading_assets = {}
+
+local next_asset_id = 1
 
 function c:init(mod)
 	self._mod = mod
+
+	self.script_loadable_packages = {
+	}
 end
 
 function c:FromXML(xml, parent_scope)
@@ -42,14 +48,85 @@ function c:LoadAsset(name, file, params)
 		dyn_package = false
 	end
 
-	table.insert(_dynamic_unloaded_assets, {
+	local spec = {
 		dbpath = dbpath,
 		extension = extension,
-		file = file,
-		dyn_package = dyn_package
-	})
+		file = self._mod._mod:GetPath() .. file,
+		dyn_package = dyn_package,
+		id = next_asset_id,
+	}
+
+	next_asset_id = next_asset_id + 1
+
+	if params.target == "immediate" or not params.target then
+		_dynamic_unloaded_assets[spec.id] = spec
+		_flush_assets()
+	elseif params.target == "scripted" then
+		local group_name = params.load_group
+
+		local group = self.script_loadable_packages[group_name] or {
+			assets = {},
+			loaded = false
+		}
+		self.script_loadable_packages[group_name] = group
+
+		table.insert(group.assets, spec)
+	else
+		error("Unrecognised load type " .. params.target)
+	end
+end
+
+function c:LoadAssetGroup(group_name)
+	assert(group_name, "cannot load nil group")
+	local group = self.script_loadable_packages[group_name]
+
+	if not group then
+		error("Group '" .. group_name .. "' does not exist")
+	end
+
+	if group.loaded then return end
+
+	group.loaded = true
+
+	for _, spec in ipairs(group.assets) do
+		_dynamic_unloaded_assets[spec.id] = spec
+	end
 
 	_flush_assets()
+end
+
+function c:FreeAssetGroup(group_name)
+	assert(group_name, "cannot free nil group")
+	local group = self.script_loadable_packages[group_name]
+
+	if not group then
+		error("Group '" .. group_name .. "' does not exist")
+	end
+
+	-- We don't care if the group is loaded or not, as each asset
+	-- is checked if it's unloaded.
+
+	group.loaded = false
+
+	for _, spec in ipairs(group.assets) do
+		-- If it's queued to be loaded, ignore it.
+		_dynamic_unloaded_assets[spec.id] = nil
+
+		local ext = Idstring(spec.extension)
+		local dbpath = Idstring(spec.dbpath)
+
+		if spec._entry_created then
+			spec._entry_created = false
+			DB:remove_entry(ext, dbpath)
+		end
+
+		if spec._targeted_package then
+			managers.dyn_resource:unload(ext, dbpath, spec._targeted_package, false)
+			spec._targeted_package = nil
+
+			_currently_loading_assets[spec] = nil
+		end
+	end
 end
 
 
@@ -61,7 +138,7 @@ _flush_assets = function(dres)
 	local next_to_load = {}
 
 	local i = 1
-	for _, asset in pairs(_dynamic_unloaded_assets) do
+	for id, asset in pairs(_dynamic_unloaded_assets) do
 		local ext = Idstring(asset.extension)
 		local dbpath = Idstring(asset.dbpath)
 		local path = asset.file
@@ -73,12 +150,41 @@ _flush_assets = function(dres)
 		-- TODO a good way to log this
 		-- log("Loading " .. asset.dbpath .. " " .. asset.extension .. " from " .. path)
 
-		DB:create_entry(ext, dbpath, path)
+		if not asset._entry_created then
+			blt.ignoretweak(dbpath, ext)
+			DB:create_entry(ext, dbpath, path)
+			asset._entry_created = true
+		end
 
-		if asset.dyn_package then
-			dres:load(ext, dbpath, dres.DYN_RESOURCES_PACKAGE, function()
+		if asset.dyn_package and not asset._targeted_package then
+			asset._targeted_package = dres.DYN_RESOURCES_PACKAGE
+
+			_currently_loading_assets[asset] = {}
+
+			dres:load(ext, dbpath, asset._targeted_package, function()
 				-- This is called when the asset is done loading.
 				-- Should we wait for these to all be called?
+
+				_currently_loading_assets[asset] = nil
+
+				if BLT.DEBUG_MODE then
+					log("[BLT] Assets remaining to load:")
+					for spec, info in pairs(_currently_loading_assets) do
+						log("\t" .. spec.dbpath)
+					end
+					log("\tEnd of asset list")
+				end
+			end)
+
+			-- Warn the user if a file has not loaded in the last fifteen seconds
+			DelayedCalls:Add("SuperBLTAssetLoaderModelWatchdog", 15, function()
+				if next(_currently_loading_assets) then
+log("[BLT] No asset has been loaded in the last 15 seconds, and these assets have not yet loaded.")
+log("[BLT] This suggests they may be corrupt, and could prevent the game from exiting the current level:")
+					for spec, info in pairs(_currently_loading_assets) do
+						log("\t" .. spec.dbpath .. "." .. spec.extension .. " (" .. path .. ")")
+					end
+				end
 			end)
 
 			i = i + 1
