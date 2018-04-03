@@ -1,8 +1,15 @@
 SoundsModule = SoundsModule or class(ModuleBase)
 SoundsModule.type_id = "Sounds"
-function SoundsModule:RegisterHook()
+function SoundsModule:init(...)
+    if not SoundsModule.super.init(self, ...) then
+        return false
+	end
 	BeardLib.Utils:SetupXAudio()
-	self:ReadSounds(self._config)
+	if self._config.force_autofire_fix then
+		CustomSoundManager.force_autofire_fix = true
+	end
+    self:ReadSounds(self._config)
+    return true
 end
 
 function SoundsModule:ReadSounds(data, prev_dir)
