@@ -5,9 +5,6 @@ function SoundsModule:init(...)
         return false
 	end
 	BeardLib.Utils:SetupXAudio()
-	if self._config.force_autofire_fix then
-		CustomSoundManager.force_autofire_fix = true
-	end
     self:ReadSounds(self._config)
     return true
 end
@@ -39,6 +36,8 @@ function SoundsModule:ReadSounds(data, prev_dir)
 					prefix = prefix,
 					unload = unload,
 				}, v))
+			elseif (v._meta == "redirect" or v._meta == "Redirect") then
+				CustomSoundManager:AddRedirect(v.id, v.to, v.prefix or prefix)
 			elseif (v._meta == "sounds" or v._meta == "Sounds") then
 				self:ReadSounds(v, dir)
 			end
