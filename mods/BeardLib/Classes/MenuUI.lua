@@ -16,8 +16,8 @@ function MenuUI:init(params)
         name = self.name or self.type_name, 
         alpha = 0, layer = self.layer
     })
-    self._panel:key_press(ClassClbk(self, "KeyPressed"))
-    self._panel:key_release(ClassClbk(self, "KeyReleased"))
+    self._panel:key_press(callback(self, self, "KeyPressed"))
+    self._panel:key_release(callback(self, self, "KeyReleased"))
 
     self._panel:bitmap({
         name = "bg",
@@ -54,25 +54,14 @@ function MenuUI:init(params)
     self.private = {}
 	if self.visible == true and managers.mouse_pointer then self:enable() end
 
-    BeardLib:AddUpdater("MenuUIUpdate"..tostring(self), ClassClbk(self, "Update"), true)
+    BeardLib:AddUpdater("MenuUIUpdate"..tostring(self), callback(self, self, "Update"), true)
     if self.create_items then self:create_items() end
-    BeardLib.managers.menu_ui:add_menu(self)
-    
-    --Deprecated values
-    self.pre_key_press = self.pre_key_press or self.always_key_press
-    self.pre_key_release = self.pre_key_release or self.always_key_released
-    self.pre_mouse_press = self.pre_mouse_press or self.always_mouse_press
-    self.pre_mouse_move = self.pre_mouse_move or self.always_mouse_move
-    
-    if self.use_default_close_key then
-        self.close_key = Idstring("esc")
-    end
 end
 
 function MenuUI:ReloadInterface(params, shallow)
     table.merge(self, params or {})
     self._panel:child("bg"):configure({
-        visible = not not self.background_blur or not not self.background_color,
+        visible = not not self.background_blur or self.background_color ~= nil,
         render_template = self.background_blur and "VertexColorTexturedBlur3D" or "VertexColorTextured",
         texture = self.background_blur and "guis/textures/test_blur_df",
         w = self.background_blur and self._panel:w(),
@@ -90,7 +79,7 @@ function MenuUI:ReloadInterface(params, shallow)
         color = self.help_color or Color.black       
     })
     if not shallow then
-        for _, menu in pairs(self._menus) do
+        for _, menu in ipairs(self._menus) do
             menu:ReloadInterface()
         end
     end
@@ -172,19 +161,8 @@ end
 function MenuUI:Enabled() return self._enabled end
 
 function MenuUI:IsMouseActive()
-    if BeardLib.managers.menu_ui:input_disabled() then
-        return false
-    end
     local mc = managers.mouse_pointer._mouse_callbacks
-    return mc[#mc] and mc[#mc].menu_ui_object == self
-end
-
-function MenuUI:SetEnabled(enabled)
-    if enabled then
-        self:Enable()
-    else
-        self:Disable()
-    end
+    return mc[#mc] and mc[#mc].parent == self
 end
 
 function MenuUI:Enable()
@@ -192,19 +170,19 @@ function MenuUI:Enable()
         return
     end
     if self.animate_toggle then
-        play_anim(self._panel, {set = {alpha = 1}, time = 0.2})       
+        play_anim(self._panel, {set = {alpha = 1}})       
     else
         self._panel:set_alpha(1)
     end
 	self._enabled = true
     self._mouse_id = self._mouse_id or managers.mouse_pointer:get_id()
 	managers.mouse_pointer:use_mouse({
-		mouse_move = ClassClbk(self, "MouseMoved"),
-		mouse_press = ClassClbk(self, "MousePressed"),
-		mouse_double_click = ClassClbk(self, "MouseDoubleClick"),
-		mouse_release = ClassClbk(self, "MouseReleased"),
+		mouse_move = callback(self, self, "MouseMoved"),
+		mouse_press = callback(self, self, "MousePressed"),
+		mouse_double_click = callback(self, self, "MouseDoubleClick"),
+		mouse_release = callback(self, self, "MouseReleased"),
 		id = self._mouse_id,
-        menu_ui_object = self
+        parent = self
 	})
 end
 
@@ -213,20 +191,19 @@ function MenuUI:Disable()
         return
     end
     if self.animate_toggle then
-        play_anim(self._panel, {set = {alpha = 0}, time = 0.2})
+        play_anim(self._panel, {set = {alpha = 0}})
     else
         self._panel:set_alpha(0)
     end
 	self._enabled = false
 	if self._highlighted then self._highlighted:UnHighlight() end
-    if self._openlist then self._openlist:hide() end
-    managers.mouse_pointer:remove_mouse(self._mouse_id)
-    BeardLib.managers.menu_ui:close_menu_event()
+	if self._openlist then self._openlist:hide() end
+	managers.mouse_pointer:remove_mouse(self._mouse_id)
 end
 
 function MenuUI:RunToggleClbk()
     if self.toggle_clbk then
-        self.toggle_clbk(self, self:Enabled())
+        self.toggle_clbk(self:Enabled())
     end           
 end
 
@@ -239,10 +216,14 @@ end
 function MenuUI:Toggle()
     if not self:Enabled() then
         self:enable()
-        self:RunToggleClbk()
+        if self.toggle_clbk then
+            self.toggle_clbk(self:Enabled())
+        end
     elseif self:ShouldClose() then
         self:disable()
-        self:RunToggleClbk()
+        if self.toggle_clbk then
+            self.toggle_clbk(self:Enabled())
+        end
     end
 end
 
@@ -254,14 +235,13 @@ function MenuUI:Update()
     if self._showing_help and (not alive(self._showing_help) or not self._showing_help:MouseInside(x, y)) then
         self:HideHelp()
     end
+    if self._highlighted and not self:IsMouseActive() then
+        self._highlighted:UnHighlight()
+    end
 end
 
 function MenuUI:KeyReleased(o, k)
-    if self.pre_key_released then 
-        if self.pre_key_released(o, k) == false then
-            return
-        end
-    end
+    if self.always_key_released then self.always_key_released(o, k) end
     self._scroll_hold = nil
     self._key_pressed = nil   
     if not self:Enabled() then
@@ -279,35 +259,26 @@ function MenuUI:MouseInside()
 end
 
 function MenuUI:KeyPressed(o, k)
-    if self.pre_key_press then
-        if self.pre_key_press(o, k) == false then
-            return
-        end
-    end
+    if self.always_key_press then self.always_key_press(o, k) end
     self._key_pressed = k
-    if self.active_textbox then
-        self.active_textbox:KeyPressed(o, k)
-    end
     if self._openlist then
         self._openlist:KeyPressed(o, k)
     end
-    if self.toggle_key and k == self.toggle_key:id() then
+    if self.toggle_key and k == Idstring(self.toggle_key) then
         self:toggle()
     end
-    if self:Enabled() and self:IsMouseActive() then
-        if self._highlighted and self._highlighted.parent:Enabled() and self._highlighted:KeyPressed(o, k) then
-            return 
-        end
-        if self.close_key and k == self.close_key:id() then
-            self:Disable()
-        end
-        for _, menu in pairs(self._menus) do
-            if menu:KeyPressed(o, k) then
-                return
-            end
-        end
-        if self.key_press then self.key_press(o, k) end
+    if not self:Enabled() then
+        return
     end
+    if self:IsMouseActive() and self._highlighted and self._highlighted.parent:Enabled() and self._highlighted:KeyPressed(o, k) then
+        return 
+    end 
+    for _, menu in pairs(self._menus) do
+        if menu:KeyPressed(o, k) then
+            return
+        end
+    end
+    if self.key_press then self.key_press(o, k) end
 end
 
 function MenuUI:Param(param)
@@ -319,30 +290,20 @@ function MenuUI:SetParam(param, value)
 end
 
 function MenuUI:MouseReleased(o, button, x, y)
-    if self.pre_mouse_release then 
-        if self.pre_mouse_release(button, x, y) == false then
-            return
-        end
-    end
-
-	self._slider_hold = nil
-    for _, menu in pairs(self._menus) do
+	self._slider_hold = nil    
+    for _, menu in ipairs(self._menus) do
         if menu:MouseReleased(button, x, y) then
             return
         end
     end
     if self.mouse_release then
-        self.mouse_release(button, x, y)
+        self.mouse_release(o, k)
     end
 end
 
 function MenuUI:MouseDoubleClick(o, button, x, y)
-    if self.pre_mouse_double_click then 
-        if self.pre_mouse_double_click(button, x, y) == false then
-            return
-        end
-    end
-	for _, menu in pairs(self._menus) do
+    if self.always_mouse_double_click then self.always_mouse_double_click(button, x, y) end
+	for _, menu in ipairs(self._menus) do
 		if menu:MouseDoubleClick(button, x, y) then
             return
 		end
@@ -350,24 +311,9 @@ function MenuUI:MouseDoubleClick(o, button, x, y)
     if self.mouse_double_click then self.mouse_double_click(button, x, y) end
 end
 
-local scroll_up = Idstring("mouse wheel up")
-local scroll_down = Idstring("mouse wheel down")
-
 function MenuUI:MousePressed(o, button, x, y)
-    if self.pre_mouse_press then 
-        if self.pre_mouse_press(button, x, y) == false then
-            return
-        end
-    end
-
     self:HideHelp()
-    if self.active_textbox and button ~= scroll_down and button ~= scroll_up then
-        if self.active_textbox:MousePressed(button, x, y) then
-            return
-        elseif  self.active_textbox then
-            self.active_textbox:set_active(false)
-        end
-    end
+    if self.always_mouse_press then self.always_mouse_press(button, x, y) end
     if self._openlist then
         if self._openlist.parent:Enabled() then
             if self._openlist:MousePressed(button, x, y) then
@@ -377,7 +323,7 @@ function MenuUI:MousePressed(o, button, x, y)
             self._openlist:hide()
         end
     else    
-    	for _, menu in pairs(self._menus) do
+    	for _, menu in ipairs(self._menus) do
             if menu:MouseFocused() then
         		if menu:MousePressed(button, x, y) then
                     return
@@ -401,18 +347,7 @@ function MenuUI:ShouldClose()
 end
 
 function MenuUI:MouseMoved(o, x, y)
-    if self.pre_mouse_move then 
-        if self.pre_mouse_move(x, y) == false then
-            return
-        end
-    end
-
-    if self.active_textbox and not self.active_textbox:MouseMoved(x, y) then
-        if self.active_textbox then
-            self.active_textbox:set_active(false)
-        end
-    end
-
+    if self.always_mouse_move then self.always_mouse_move(x, y) end
     if self._openlist then
         if self._openlist.parent:Enabled() then
             if self._openlist:MouseMoved(x, y) then
@@ -425,7 +360,7 @@ function MenuUI:MouseMoved(o, x, y)
         if self._highlighted and not self._highlighted:MouseFocused() and not self._scroll_hold and not self._highlighted.parent.always_highlighting then
             self._highlighted:UnHighlight()
         else
-            for _, menu in pairs(self._menus) do
+            for _, menu in ipairs(self._menus) do
                 if menu:MouseMoved(x, y) then
                     return
                 end
@@ -464,7 +399,7 @@ function MenuUI:GetItem(name, shallow)
 end
 
 function MenuUI:GetItemByLabel(label, shallow)
-    for _, item in pairs(self._menus) do
+    for _, item in pairs(self._all_items) do
         if item.label == label then
             return item
         elseif item.menu_type and not shallow then
@@ -478,9 +413,6 @@ function MenuUI:GetItemByLabel(label, shallow)
 end
 
 function MenuUI:Focused()
-    if self:Typing() then
-        return true
-    end
 	for _, menu in pairs(self._menus) do
 		if menu:Visible() then
             return self._highlighted
@@ -489,14 +421,20 @@ function MenuUI:Focused()
     return false
 end
 
-function MenuUI:GetBackground()
-    return self.background_color
-end
-
 function MenuUI:Typing()
-    return alive(self.active_textbox) and self.active_textbox.cantype
+    return self._highlighted and self._highlighted._textbox and self._highlighted._textbox.cantype
 end
 
+--Deprecated Functions--
+function MenuUI:SwitchMenu(menu)
+    if self._current_menu then
+        self._current_menu:SetVisible(false)
+    end
+    menu:SetVisible(true)
+    self._current_menu = menu
+end
+
+function MenuUI:NewMenu(params) return self:Menu(params) end
 function MenuUI:enable() return self:Enable() end
 function MenuUI:disable() return self:Disable() end
 function MenuUI:toggle() return self:Toggle() end
