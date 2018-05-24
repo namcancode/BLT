@@ -1,19 +1,9 @@
 MaskModule = MaskModule or class(ItemModuleBase)
-
 MaskModule.type_name = "Mask"
 
-function MaskModule:init(core_mod, config)
-    self.clean_table = table.add(clone(self.clean_table), {
-        {
-            param ="pcs",
-            action = "no_number_indexes"
-        }
-    })
-    if not MaskModule.super.init(self, core_mod, config) then
-        return false
-    end
-
-    return true
+function MaskModule:init(...)
+    self.clean_table = table.add(clone(self.clean_table), {{param = "pcs", action = "no_number_indexes"}})
+	return MaskModule.super.init(self, ...)
 end
 
 function MaskModule:RegisterHook()
@@ -28,7 +18,8 @@ function MaskModule:RegisterHook()
             desc_id = "bm_msk_" .. self._config.id .. "_desc",
             dlc = self.defaults.dlc,
             pcs = {},
-            value = 0,
+			value = 0,
+			texture_bundle_folder = "mods",
             global_value = self.defaults.global_value,
             custom = true
         }, self._config.item or self._config)

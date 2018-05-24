@@ -4,7 +4,7 @@ CustomPackageManager = CustomPackageManager or {}
 
 local C = CustomPackageManager
 C.custom_packages = {}
-C.ext_convert = {dds = "texture", png = "texture", tga = "texture", jpg = "texture"}
+C.ext_convert = {dds = "texture", png = "texture", tga = "texture", jpg = "texture", bik = "movie"}
 
 function C:RegisterPackage(id, directory, config)
     local func_name = "CustomPackageManager:RegisterPackage"
@@ -58,15 +58,41 @@ function C:HasPackage(id)
     return not not self.custom_packages[id:key()]
 end
 
+local UNIT_LOAD = "unit_load"
+local ADD = "add"
+
+local UNIT = "unit"
+local MODEL = "model"
+local OBJECT = "object"
+local TEXTURE = "texture"
+local MAT_CONFIG = "material_config"
+local SEQ_MANAGER = "sequence_manager"
+local COOKED_PHYSICS = "cooked_physics"
+
+local UNIT_IDS = UNIT:id()
+local MODEL_IDS = MODEL:id()
+local OBJECT_IDS = OBJECT:id()
+local TEXTURE_IDS = TEXTURE:id()
+local MAT_CONFIG_IDS = MAT_CONFIG:id()
+local SEQ_MANAGER_IDS = SEQ_MANAGER:id()
+local COOKED_PHYSICS_IDS = COOKED_PHYSICS:id()
+
+local CP_DEFAULT = BeardLib:GetPath() .. "Assets/units/default_cp.cooked_physics"
 function C:LoadPackageConfig(directory, config)
     if not (SystemFS and SystemFS.exists) then
         BeardLib:log("[ERROR] SystemFS does not exist! Custom Packages cannot function without this! Do you have an outdated game version?")
         return
-    end
+	end
+	
+	if not DB.create_entry then
+		BeardLib:log("[ERROR] Create entry function does not exist, cannot add files.")
+		return
+	end
+
     if config.load_clbk and not config.load_clbk() then
         return
-    end
-
+	end
+	
     local loading = {}
     for i, child in ipairs(config) do
         if type(child) == "table" then
@@ -74,22 +100,43 @@ function C:LoadPackageConfig(directory, config)
             local path = child.path
             local load_clbk = child.load_clbk
             if not load_clbk or load_clbk(path, typ) then
-                if typ == "unit_load" or typ == "add" then
+                if typ == UNIT_LOAD or typ == ADD then
                     self:LoadPackageConfig(directory, child)
                 elseif typ and path then
-                    path = BeardLib.Utils.Path:Normalize(path)
+                    path = Path:Normalize(path)
                     local ids_ext = Idstring(self.ext_convert[typ] or typ)
-                    local ids_path = Idstring(path)
-                    local file_path = BeardLib.Utils.Path:Combine(directory, path) ..".".. typ
-                    if SystemFS:exists(file_path) then
-                        if (not DB:has(ids_ext, ids_path) or child.force) then
-                            FileManager:AddFile(ids_ext, ids_path, file_path)
+					local ids_path = Idstring(path)
+					local file_path = child.full_path or Path:Combine(directory, config.file_path or path)
+					local file_path_ext = file_path.."."..typ
+                    if FileIO:Exists(file_path_ext) then
+						if (child.force or not DB:has(ids_ext, ids_path)) then
+							if ids_ext == UNIT_IDS then
+								local all = child.include_all
+								local most = all or child.include_most
+
+								if most or child.include_default then
+									FileManager:AddFileWithCheck(MODEL_IDS, ids_path, file_path.."."..MODEL)
+									FileManager:AddFileWithCheck(OBJECT_IDS, ids_path, file_path.."."..OBJECT)
+									FileManager:AddFileWithCheck(MAT_CONFIG_IDS, ids_path, file_path.."."..MAT_CONFIG)
+									if not DB:has(ids_ext, ids_path) then
+										FileManager:AddFile(COOKED_PHYSICS_IDS, ids_path, CP_DEFAULT)
+									end	
+								end
+								if most or child.include_textures then
+									FileManager:AddFileWithCheck(TEXTURE_IDS, Idstring(path.."_df"), file_path.."_df" .."."..TEXTURE)
+									FileManager:AddFileWithCheck(TEXTURE_IDS, Idstring(path.."_nm"), file_path.."_nm" .."."..TEXTURE)
+								end
+								if all or child.include_sequence then
+									FileManager:AddFileWithCheck(SEQ_MANAGER_IDS, ids_path, file_path.."."..SEQ_MANAGER)
+								end
+							end
+							FileManager:AddFile(ids_ext, ids_path, file_path_ext)
                             if child.reload then
                                 PackageManager:reload(ids_ext, ids_path)
                             end
                             if child.load then
-                                table.insert(loading, {ids_ext, ids_path, file_path})
-                            end
+                                table.insert(loading, {ids_ext, ids_path, file_path_ext})
+							end
                         end
                     else
                         BeardLib:log("[ERROR] File does not exist! %s", tostring(file_path))
@@ -113,7 +160,7 @@ function C:UnloadPackageConfig(config)
             local typ = child._meta
             local path = child.path
             if typ and path then
-                path = BeardLib.Utils.Path:Normalize(path)
+                path = Path:Normalize(path)
                 local ids_ext = Idstring(self.ext_convert[typ] or typ)
                 local ids_path = Idstring(path)
                 if DB:has(ids_ext, ids_path) then

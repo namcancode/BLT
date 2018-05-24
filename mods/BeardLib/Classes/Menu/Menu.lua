@@ -11,6 +11,7 @@ function Menu:Init(params)
         visible = self.visible == true,
         layer = self.layer or 1,
     })
+    self.panel:script().menuui_item = self
     self.bg = self.panel:bitmap({
         name = "background",
         halign = "grow",
@@ -26,7 +27,8 @@ function Menu:Init(params)
         layer = 4,
         padding = 0, 
         scroll_width = self.scrollbar == false and 0 or self.scroll_width, 
-        hide_shade = true, 
+		hide_shade = true,
+		debug = self.debug,
         color = self.scroll_color or self.highlight_color,
         hide_scroll_background = self.hide_scroll_background,
         scroll_speed = self.scroll_speed
@@ -77,26 +79,24 @@ function Menu:WorkParams(params)
     end
 end
 
-function Menu:SetSize(w, h, no_recreate)
+function Menu:SetSize(w, h)
     self.orig_h = h
-    self:_SetSize(w, h, no_recreate)
+    self:_SetSize(w, h)
 end
 
-function Menu:_SetSize(w, h, no_recreate)
+function Menu:_SetSize(w, h)
     if not self:alive() then
         return
-    end
-    w = w or self.w
-    h = self.closed and self:TextHeight() or (h or self.orig_h or self.h)
-    h = math.clamp(h, self.min_height or 0, self.max_height or h)
-    self.panel:set_size(w, h)
-    self:SetScrollPanelSize()
-    self.w = w
-    self.h = h
+	end
+	
+	w = w or self.w
+	h = h or self.orig_h or self.h
+	h = math.clamp(h, self.min_height or 0, self.max_height or h)
+
+	self.panel:set_size(w, h)
+	self:SetScrollPanelSize()
+    self.w, self.h = self.panel:size()
     self:Reposition()
-    if not no_recreate then
-        self:RecreateItems()
-    end
     self:MakeBorder()
 end
 
@@ -105,7 +105,21 @@ function Menu:SetScrollPanelSize()
         return
     end
     self._scroll:set_size(self.panel:w(), self.panel:h() - self:TextHeight())
-    self._scroll:panel():set_bottom(self:Height())
+	self._scroll:panel():set_bottom(self.panel:h())
+	self._scroll:force_scroll()
+end
+
+function Menu:UpdateCanvas(h)
+    if not self:alive() then
+        return
+	end
+
+	if not self.auto_height and h < self._scroll:scroll_panel():h() then
+		h = self._scroll:scroll_panel():h()
+	end
+	
+	self._scroll:set_canvas_size(nil, h)
+	self:_SetSize(nil, self.auto_height and self.items_panel:h() + self:TextHeight() or nil)
 end
 
 function Menu:KeyPressed(o, k)
@@ -177,19 +191,19 @@ function Menu:MousePressed(button, x, y)
     return false
 end
 
+function Menu:SetPointer(state)
+	self.menu:SetPointer(state)
+end
+
 function Menu:MouseMoved(x, y)
     if self:Enabled() and self:MouseFocused(x, y) then
-        local _, pointer = self._scroll:mouse_moved(nil, x, y) 
+		local _, pointer = self._scroll:mouse_moved(nil, x, y)
         if pointer then
             self:CheckItems()
-            if managers.mouse_pointer.set_pointer_image then
-                managers.mouse_pointer:set_pointer_image(pointer)
-            end
+			self:SetPointer(pointer)
             return true
-        else
-            if managers.mouse_pointer.set_pointer_image then
-                managers.mouse_pointer:set_pointer_image("arrow")
-            end
+		else
+			self:SetPointer()
         end
         for _, item in pairs(self._visible_items) do
             if item:MouseMoved(x, y) then
@@ -203,16 +217,19 @@ end
 function Menu:CheckItems()
     self._visible_items = {}
     for _, item in pairs(self._my_items) do
-        if item:TryRendering() and (not item.override_panel or item.override_panel == self) then
+        if (not item.override_panel or item.override_panel == self) and item:TryRendering() then
             table.insert(self._visible_items, item)
-        end
+		end
+		if item.CheckItems then
+			item:CheckItems()
+		end
     end
 end
 
 function Menu:MouseReleased(button, x, y)
     self._scroll:mouse_released(button, x, y)
-    if not self.menu._highlighted then
-        managers.mouse_pointer:set_pointer_image("arrow")
+	if not self.menu._highlighted then
+		self:SetPointer()
     end
     for _, item in pairs(self._my_items) do
         if item:MouseReleased(button, x, y) then
@@ -238,15 +255,21 @@ function Menu:SetVisible(visible, animate, no_align)
     self.menu:CheckOpenedList()
 end
 
-function Menu:UpdateCanvas()
-    if not self:alive() then
-        return
+function Menu:GetMenus(match, deep, menus)
+	menus = menus or {}
+    for _, menu in pairs(self._my_items) do
+        if menu.menu_type then
+            if not match or menu.name:find(match) then
+                table.insert(menus, menu)
+            elseif deep then
+                local item = menu:GetMenus(name, true, menus)
+                if item and item.name then
+                    return item
+                end
+            end
+        end
     end
-    if self.type_name == "Group" then
-        self:SetScrollPanelSize()
-    end
-    self._scroll:update_canvas_size()
-    self:CheckItems()
+    return menus
 end
 
 function Menu:GetMenu(name, shallow)
@@ -311,7 +334,6 @@ function Menu:ClearItems(label)
     if self.auto_align then
         self:AlignItems(true)
     end
-    self:UpdateCanvas()
 end
 
 function Menu:RecreateItems()
@@ -331,10 +353,12 @@ function Menu:RecreateItem(item, align_items)
     if alive(panel) then
         panel:parent():remove(panel)
     end
-    if item.override_panel then
-        table.delete(item.override_panel._adopted_items, item)
-        if item.override_panel.Panel then
-            item.parent_panel = item.override_panel:Panel()
+    local pitem = item.override_panel
+    if pitem then
+        table.delete(pitem._adopted_items, item)
+        pitem._has_adopted_items = #pitem._adopted_items > 0
+        if pitem.Panel then
+            item.parent_panel = pitem:Panel()
         end
     end
     item.parent_panel = alive(item.parent_panel) and item.parent_panel or self.items_panel
@@ -367,8 +391,12 @@ function Menu:RemoveItem(item)
 
     if item._list then
         item._list:Destroy()
-    end
-    
+	end
+	
+	if item == self.menu._highlighted then
+		self.menu:UnHighlight()
+	end
+	
     table.delete(self._reachable_items, item)
     table.delete(self._my_items, item)
     table.delete(self._adopted_items, item)
@@ -413,7 +441,6 @@ end
 
 function Menu:Group(params) return self:NewItem(BeardLib.Items.Group:new(self:ConfigureItem(params, true))) end
 function Menu:Menu(params) return self:NewItem(BeardLib.Items.Menu:new(self:ConfigureItem(params, true))) end
-function Menu:Button(params) return self:NewItem(BeardLib.Items.Item:new(self:ConfigureItem(params))) end
 function Menu:ComboBox(params) return self:NewItem(BeardLib.Items.ComboBox:new(self:ConfigureItem(params))) end
 function Menu:TextBox(params) return self:NewItem(BeardLib.Items.TextBox:new(self:ConfigureItem(params))) end
 function Menu:ComboBox(params) return self:NewItem(BeardLib.Items.ComboBox:new(self:ConfigureItem(params))) end
@@ -421,6 +448,12 @@ function Menu:Slider(params) return self:NewItem(BeardLib.Items.Slider:new(self:
 function Menu:KeyBind(params) return self:NewItem(BeardLib.Items.KeyBindItem:new(self:ConfigureItem(params))) end
 function Menu:Toggle(params) return self:NewItem(BeardLib.Items.Toggle:new(self:ConfigureItem(params))) end
 function Menu:ItemsGroup(params) return self:Group(params) end --Deprecated--
+
+function Menu:Button(params) 
+	local _params = self:ConfigureItem(params)
+	_params.button_type = true
+	return self:NewItem(BeardLib.Items.Item:new(_params))
+end
 
 function Menu:NumberBox(params)
     local _params = self:ConfigureItem(params)

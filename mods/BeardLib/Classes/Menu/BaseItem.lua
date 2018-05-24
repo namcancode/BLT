@@ -69,12 +69,13 @@ end
 
 function BaseItem:BestAlpha(...)
 	local big
+	
 	for _, c in pairs({...}) do
-		if c and (not big or c.alpha > big.alpha) then
+		if c and c.a and (not big or c.a > big.a) then
 			big = c
 		end
 	end
-	return big
+	return big or Color.white
 end
 
 --Hopefully this reaches the base MenuUI and not cause a stack overflow xd
@@ -121,17 +122,20 @@ function BaseItem:WorkParams(params)
 	self:WorkParam("control_slice", 0.5)
 	self:WorkParam("font", tweak_data.menu.pd2_large_font or tweak_data.menu.default_font)
 	self:WorkParam("border_size", 2)
-	self:WorkParam("last_y_offset")
+	--self:WorkParam("last_y_offset")
 	self:WorkParam("accent_color")
 	self:WorkParam("scroll_color", self.accent_color)
 	self:WorkParam("slider_color", self.accent_color)
 	self:WorkParam("border_color", self.accent_color)
 	self:WorkParam("line_color", self.accent_color)
-	self:WorkParam("ignore_align", self.override_panel)
+	self.ignore_align = NotNil(self.ignore_align, self.override_panel)
 	self:WorkParam("localized")
 	self:WorkParam("help_localized", self.localized)
-	self:WorkParam("items_localized", self.localized)
 	self:WorkParam("animate_colors")
+	self:WorkParam("context_screen_offset_y", 32)
+	self:WorkParam("context_scroll_width", 10)
+	
+	self:WorkParam("click_btn", Idstring("0"))
 
 	--Specific items
 	self:WorkParam("wheel_control")
@@ -140,10 +144,15 @@ function BaseItem:WorkParams(params)
 	self:WorkParam("supports_keyboard")
 	self:WorkParam("supports_mouse")
 	self:WorkParam("color_dialog")
+	self:WorkParam("use_alpha")
+	self:WorkParam("items_localized", self.localized)
+	self:WorkParam("items_uppercase")
+	self:WorkParam("items_lowercase")
 
 	self.name = NotNil(self.name, self.text, "")
 	self.text = NotNil(self.text, self.text ~= false and self.name)
 	self.fit_width = NotNil(self.fit_width, self.parent.align_method ~= "grid")
+	self.click_btn = self.click_btn:id()
 
 	if not self.offset then
 		self:WorkParam("offset")
@@ -170,11 +179,17 @@ function BaseItem:WorkParams(params)
 		end	
 	end
 
-	if not self.initialized and self.parent ~= self.menu then
-		if (not self.w or self.fit_width) then
-			self.w = (self.w or self.parent_panel:w()) - ((self.size_by_text or self.type_name == "ImageButton") and 0 or self.offset[1] * 2)
+	if not self.initialized then
+		if self.parent ~= self.menu then
+			if (not self.w or self.fit_width) then
+				self.w = (self.w or self.parent_panel:w()) - ((self.size_by_text or self.type_name == "ImageButton") and 0 or self.offset[1] * 2)
+			end
+			self.w = math.clamp(self.w, self.min_width or 0, self.max_width or self.w)
+		else
+			self.w = self.w or self.parent_panel:w()
+			self.h = self.h or self.parent_panel:h()
 		end
-		self.w = math.clamp(self.w, self.min_width or 0, self.max_width or self.w)
+		self.orig_h = self.h
 	end
 	self.should_render = true
 end
@@ -250,16 +265,31 @@ function BaseItem:TryRendering()
 	if not self.visible then
 		return false
 	end
-	local p = self.parent_panel
+	
+	local p = self.override_panel or self.parent
+
 	local visible = false
 	if alive(self.panel) then		
-		local x = p:world_x()
-	 	visible = p:inside(x, self.panel:world_y()) == true or p:inside(x, self.panel:world_bottom()) == true
+		local y = self.panel:world_y()
+		local b = self.panel:world_bottom()
+	
+		while p ~= nil do
+			local pan = self.override_panel and self.parent_panel or p._scroll and p._scroll:scroll_panel()
+			if p.should_render and b > pan:world_y() and y < pan:world_bottom() then
+				visible = true
+				if self.override_panel or p.parent == self.menu then
+					p = nil
+				else
+					p = p.parent
+				end
+			else
+				visible = false
+				break
+			end
+		end
+
 		self.panel:set_visible(visible)
 		self.should_render = visible
-		if self.debug then
-			BeardLib:log("Item %s has been set to rendering=%s", tostring(self), tostring(visible))
-		end
 	end
 	return visible
 end
@@ -268,6 +298,7 @@ function BaseItem:SetVisible(visible, no_align)
 	if not self:alive() then
 		return
 	end
+	self._hidden_by_menu = nil
     self.visible = visible == true
     self.panel:set_visible(self.visible)
     if not self.visible then
@@ -306,6 +337,7 @@ function BaseItem:Center() return self:Panel():center() end
 function BaseItem:Name() return self.name end
 function BaseItem:Label() return self.label end
 function BaseItem:Text() return type(self.text) == "string" and self.text or "" end
+function BaseItem:TextValue() return BaseItem.Text(self) end
 function BaseItem:Height() return self:Panel():h() end
 function BaseItem:OuterHeight() return self:Height() + self:Offset()[2] end
 function BaseItem:Width() return self:Panel():w() end
@@ -333,7 +365,10 @@ function BaseItem:MouseFocused(x, y)
 end
 
 --Add/Set Funcs--
-function BaseItem:AddItem(item) table.insert(self._adopted_items, item) end
+function BaseItem:AddItem(item) 
+	table.insert(self._adopted_items, item)
+	self._has_adopted_items = true
+end
 function BaseItem:SetCallback(callback) self.on_callback = callback end
 function BaseItem:SetLabel(label) self.label = label end
 function BaseItem:SetParam(k,v) self[k] = v end
@@ -442,7 +477,7 @@ function BaseItem:SetValue(value, run_callback)
 end
 
 function BaseItem:MouseCheck(press)
-	if not self:alive() or not self.enabled or (press and self.menu._highlighted ~= self) then
+	if not self:alive() or not self.enabled or not self.visible or not self.should_render or (press and self.menu._highlighted ~= self) then
 		return false
 	end
 	return not self.divider_type, true

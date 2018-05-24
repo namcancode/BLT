@@ -25,7 +25,7 @@ function BeardLibModsMenu:CreateItems(menu)
     
     self._holder = menu:Menu({
         name = "Main",
-        scrollbar = false,
+		scrollbar = false,
         background_color = Color(0.8, 0.2, 0.2, 0.2),
         highlight_color = menu.foreground:with_alpha(0.1),
         size = 20,
@@ -81,32 +81,41 @@ function BeardLibModsMenu:CreateItems(menu)
         h = self._holder:ItemsHeight() - text:OuterHeight() - (self._holder.offset[2] * 2),
         fit_width = false,
         offset = 4,
-        size = 16,
+		size = 16,
         position = "CenterxBottomOffset-y",
         auto_align = false,
         align_method = "grid",
-    })
-    self:AddMod(BeardLib, "blt")
-    for _, mod in pairs(BeardLib.Mods) do
-        self:AddMod(mod, "blt")
-    end
-    for _, mod in pairs(BeardLib.managers.AddFramework._loaded_mods) do
-        self:AddMod(mod, "custom")
-    end
-    for _, mod in pairs(BeardLib.managers.MapFramework._loaded_mods) do
-        self:AddMod(mod, "custom_heist")
-    end
+	})
+	local base = BeardLib.Frameworks.base
+	self:AddMod(BeardLib, base)
+	local done_mods = {}
+	for _, framework in pairs(BeardLib.Frameworks) do
+		if not framework.hidden then
+			for _, mod in pairs(framework._loaded_mods) do
+				self:AddMod(mod, framework)
+				done_mods[mod] = true
+			end
+		end
+	end
+	--Old mods/Lua based
+	for _, mod in pairs(BeardLib.Mods) do
+		if not done_mods[mod] then
+			self:AddMod(mod, base)
+		end
+	end
     self._list:AlignItems(true)
 end
 
 local texutre_ids = Idstring("texture")
-function BeardLibModsMenu:AddMod(mod, type)
+local cap = string.capitalize
+function BeardLibModsMenu:AddMod(mod, framework)
     local disabled_mods = BeardLib.Options:GetValue("DisabledMods")
     local show_images = BeardLib.Options:GetValue("ShowImages")
     local loc = managers.localization
-    local name = mod.Name or "Missing name?"
-    local blt_mod = type == "blt"
-    local color = blt_mod and Color(0.6, 0, 1) or type == "custom" and Color(0, 0.25, 1) or Color(0.1, 0.6, 0.1)
+	local name = mod.Name or "Missing name?"
+	local type = framework.type_name or "base"
+	local blt_mod = type == "base"
+	local color = framework.menu_color
     local s = (self._list:ItemsWidth() / 5) - self._list.offset[1] - 1
 
     if mod._config.color then
@@ -133,15 +142,20 @@ function BeardLibModsMenu:AddMod(mod, type)
     self._list:SetScrollSpeed(mod_item:Height())
     local text = function(t, opt)
         return mod_item:Divider(table.merge({text_vertical = "top", text = t, localized = false}, opt))
-    end
+	end
     if show_images then
-        local img = mod._config.image
+		local img = mod._config.image
+		local auto_color = img == nil
+		if not auto_color and mod._config.auto_image_color then
+			auto_color = true
+		end
         img = img and DB:has(texutre_ids, img:id()) and img or nil
         local image = mod_item:Image({
             name = "Image",
             w = 100,
-            h = 100,
-            foreground = (not mod._config.auto_image_color or not mod._config.image) and Color.white or nil,
+			h = 100,
+			foreground = Color.white,
+			auto_foreground = auto_color,
             count_as_aligned = true,
             texture = img or "guis/textures/pd2/none_icon",
             position = "CenterTop"
@@ -150,8 +164,15 @@ function BeardLibModsMenu:AddMod(mod, type)
     local t = text(tostring(name), {name = "Title", size = 20})
     if t:Height() == t.size then
         text("")
-    end
-    text("Type: "..loc:text("beardlib_mod_type_" .. type))
+	end
+
+	local txt = "beardlib_mod_type_" .. type	
+	if loc._custom_localizations[txt] then
+		text("Type: "..loc:text("beardlib_mod_type_" .. type))
+	else
+		text("Type: "..cap(type))
+	end
+
     text("", {name = "Status"})
     local p = mod_item:Toggle({
         name = "Enabled",

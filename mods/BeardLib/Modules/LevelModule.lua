@@ -2,8 +2,8 @@ LevelModule = LevelModule or class(ItemModuleBase)
 
 LevelModule.type_name = "level"
 LevelModule.levels_folder = "levels/mods/"
-function LevelModule:init(core_mod, config, load)
-    if not LevelModule.super.init(self, core_mod, config) then
+function LevelModule:init(...)
+    if not LevelModule.super.init(self, ...) then
         return false
     end
 
@@ -20,13 +20,18 @@ function LevelModule:Load()
         for i, include_data in ipairs(self._config.include) do
             if include_data.file then
                 local file_split = string.split(include_data.file, "[.]")
-                local complete_path = BeardLib.Utils.Path:Combine(self._mod.ModPath, self._config.include.directory, include_data.file)
-                local new_path = BeardLib.Utils.Path:Combine(self.levels_folder, self._config.id, file_split[1])
+                local complete_path = Path:Combine(self._mod.ModPath, self._config.include.directory, include_data.file)
+                local new_path = Path:Combine(self.levels_folder, self._config.id, file_split[1])
                 if FileIO:Exists(complete_path) then
                     if include_data.type then
                         BeardLib:ReplaceScriptData(complete_path, include_data.type, new_path, file_split[2], {add = true})
-                    else
-                        FileManager:AddFile(file_split[2]:id(), new_path:id(), complete_path)
+					else
+						local ext_id = file_split[2]:id()
+						local path_id = new_path:id()
+						FileManager:AddFile(ext_id, path_id, complete_path)
+						if include_data.reload then
+							PackageManager:reload(ext_id, path_id)
+						end
                     end
                 else
                     self:log("[ERROR] Included file '%s' is not readable by the lua state!", complete_path)
@@ -45,8 +50,9 @@ function LevelModule:Load()
     end
 
     if self._config.script_data_mods then
-        ScriptReplacementsModule:new(self._mod, self._config.script_data_mods)
-    end
+        local script_mods = ScriptReplacementsModule:new(self._mod, self._config.script_data_mods)
+        script_mods:post_init()
+	end
 
     if self._config.hooks then
         HooksModule:new(self._mod, self._config.hooks)
@@ -54,9 +60,11 @@ function LevelModule:Load()
 end
 
 function LevelModule:AddLevelDataToTweak(l_self)
-    l_self[self._config.id] = table.merge(clone(self._config), {
-        name_id = self._config.name_id or "heist_" .. self._config.id .. "_name",
-        briefing_id = self._config.brief_id or "heist_" .. self._config.id .. "_brief",
+	local id = tostring(self._config.id)
+
+    l_self[id] = table.merge(clone(self._config), {
+        name_id = self._config.name_id or "heist_" .. id .. "_name",
+        briefing_id = self._config.brief_id or "heist_" .. id .. "_brief",
         world_name = "mods/" .. self._config.id,
         ai_group_type = l_self.ai_groups[self._config.ai_group_type] or l_self.ai_groups.default,
         intro_event = self._config.intro_event or "nothing",
@@ -66,18 +74,24 @@ function LevelModule:AddLevelDataToTweak(l_self)
         custom = true
     })
     if self._config.merge_data then
-        table.merge(l_self[self._config.id], BeardLib.Utils:RemoveMetas(self._config.merge_data, true))
-    end
-    table.insert(l_self._level_index, self._config.id)
+        table.merge(l_self[id], BeardLib.Utils:RemoveMetas(self._config.merge_data, true))
+	end
+	if not table.contains(l_self._level_index, id) then
+		table.insert(l_self._level_index, id)
+	end
 end
 
 function LevelModule:AddAssetsDataToTweak(a_self)
     for _, value in ipairs(self._config.assets) do
-        if value._meta == "asset" then
-            if a_self[value.name] ~= nil then
-                a_self[value.name].exclude_stages = a_self[value.name].exclude_stages or {}
-                a_self[value.name].stages = a_self[value.name].stages or {}
-                table.insert(value.exclude and a_self[value.name].exclude_stages or a_self[value.name].stages, self._config.id)
+		if value._meta == "asset" then
+			local exclude = value.exclude
+			local asset = a_self[value.name] 
+			if asset ~= nil then
+				if (exclude and asset.exclude_stages ~= "all") or (not exclude and asset.stages ~= "all") then
+					asset.exclude_stages = asset.exclude_stages or {}
+					asset.stages = asset.stages or {}
+					table.insert(exclude and asset.exclude_stages or asset.stages, self._config.id)	
+				end
             else
                 self:log("[ERROR] Asset %s does not exist! (Map: %s)", value.name, name)
             end
@@ -114,8 +128,8 @@ InstanceModule.type_name = "instance"
 InstanceModule.levels_folder = "levels/instances/mods/"
 InstanceModule._loaded_packages = {}
 
-function InstanceModule:init(core_mod, config)
-    if not LevelModule.super.init(self, core_mod, config) then
+function InstanceModule:init(...)
+    if not LevelModule.super.init(self, ...) then
         return false
     end
     self._world_path = Path:Combine(self.levels_folder, self._config.id, "world")

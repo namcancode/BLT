@@ -1,13 +1,6 @@
 HeistMusic = HeistMusic or class(ItemModuleBase)
 HeistMusic.type_id = "HeistMusic"
 
-function HeistMusic:init(core_mod, config)
-    if not self.super.init(self, core_mod, config) then
-        return false
-    end
-    return true
-end
-
 function HeistMusic:MakeBuffer(source)
 	if source then
 		if FileIO:Exists(source) then
@@ -45,12 +38,18 @@ function HeistMusic:RegisterHook()
 			if v.start_source then
 				v.start_source = Path:Combine(dir, v.start_source)
 			end
+			if v.alt_source then
+				v.alt_source = Path:Combine(dir, v.alt_source)
+				v.alt_start_source = Path:Combine(dir, v.alt_start_source)
+				v.alt_chance = v.alt_chance and tonumber(v.alt_chance) or 0.1
+				v.allow_switch = NotNil(v.allow_switch, true)
+			end
 			if v.source then
 				v.source = Path:Combine(dir, v.source)
 			else
 				self:log("[Warning] Event named %s in heist music %s has no defined source", tostring(self._config.id), tostring(v.name))
 			end
-			music.events[v.name] = {source = self:MakeBuffer(v.source), start_source = self:MakeBuffer(v.start_source)}
+			music.events[v.name] = {source = self:MakeBuffer(v.source), start_source = self:MakeBuffer(v.start_source), alt_source = self:MakeBuffer(v.alt_source), alt_start_source = self:MakeBuffer(v.alt_start_source), alt_chance = v.alt_chance, allow_switch = v.allow_switch}
 		end
 	end
 

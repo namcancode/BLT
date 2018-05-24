@@ -5,11 +5,18 @@ function ModuleBase:init(core_mod, config)
     self._mod = core_mod
     self._name = config.name or self.type_name
     if config.file ~= nil then
-        local file = io.open(self._mod:GetRealFilePath(BeardLib.Utils.Path:Combine(self._mod.ModPath, config.file)), "r")
-        self._config = table.merge(config, ScriptSerializer:from_custom_xml(file:read("*all")))
+        local file_path = self._mod:GetRealFilePath(Path:Combine(self._mod.ModPath, config.file))
+        self._config = table.merge(config, FileIO:ReadScriptData(file_path, config.file_type or "custom_xml", config.clean_file))
     else
         self._config = config
     end
+
+	if self._config.init_clbk then
+        local clbk = self._mod:StringToCallback(self._config.init_clbk)
+        if clbk and not clbk() then
+            return
+        end
+	end
 
     for _, param in pairs(self.required_params) do
         if BeardLib.Utils:StringToTable(param, self._config, true) == nil then
@@ -22,23 +29,26 @@ function ModuleBase:init(core_mod, config)
 end
 
 function ModuleBase:post_init()
-    if self._post_init_complete then
-        return false
-    end
-
-    if self._config.post_init_clbk then
-        local clbk = self._mod:StringToCallback(self._config.post_init_clbk)
+	local post_init = self._config.post_init_clbk or self._config.post_init
+    if post_init then
+        local clbk = self._mod:StringToCallback(post_init)
         if clbk then
             clbk()
         end
-    end
-
-    self._post_init_complete = true
-    return true
+	end
+	self._post_init_complete = true
 end
 
 function ModuleBase:log(str, ...)
     self._mod:log(string.format("[%s] ", self._name) .. str, ...)
+end
+
+function ModuleBase:GetPath(directory, prev_dir)
+	if prev_dir then
+		return Path:CombineDir(prev_dir, directory)
+	else
+		return Path:CombineDir(self._mod.ModPath, directory)
+	end
 end
 
 ItemModuleBase = ItemModuleBase or class(ModuleBase)
@@ -90,3 +100,24 @@ function ItemModuleBase:do_clean_table(config)
 end
 
 function ItemModuleBase:RegisterHook() end
+
+function ItemModuleBase:DoRegisterHook(...) 
+	if self._config.register_hook_clbk then
+        local clbk = self._mod:StringToCallback(self._config.register_hook_clbk)
+        if clbk and not clbk() then
+            return
+        end
+	end
+	self:RegisterHook(...)
+end
+
+BasicModuleBase = BasicModuleBase or class(ModuleBase)
+function BasicModuleBase:init(...)
+    if not BasicModuleBase.super.init(self, ...) then
+        return false
+    end
+    self:Load()
+    return true
+end
+
+function BasicModuleBase:Load() end

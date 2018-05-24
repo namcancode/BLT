@@ -1,11 +1,9 @@
 OptionModule = OptionModule or class(ModuleBase)
-
---Need a better name for this
 OptionModule.type_name = "Options"
 
-function OptionModule:init(core_mod, config)
+function OptionModule:init(...)
     self.required_params = table.add(clone(self.required_params), {"options"})
-    if not OptionModule.super.init(self, core_mod, config) then
+    if not OptionModule.super.init(self, ...) then
         return false
     end
 
@@ -28,25 +26,38 @@ function OptionModule:init(core_mod, config)
     return true
 end
 
---TODO: figure out if post init is really required, consider making it automatic.
 function OptionModule:post_init()
-    if self._post_init_complete then
+	if self._post_init_complete then
         return false
-    end
+	end
+	self:init_options()
+	OptionModule.super.post_init(self)
+end
+
+function OptionModule:init_options()
+	if self._options_init then
+		return
+	end
 
     self:InitOptions(self._config.options, self._storage)
-
-    if self._config.value_changed then
-        self._value_changed = self._mod:StringToCallback(self._config.value_changed)
-    end
 
     if self._config.auto_load == nil or self._config.auto_load then
         self:Load()
     end
 
-    OptionModule.super.post_init(self)
+	self._options_init = true
+end
 
-    return true
+function OptionModule:OnValueChanged(full_name, value)
+	if not self._config.value_changed then
+		return
+	end
+	if not self._value_changed then
+		self._value_changed = self._mod:StringToCallback(self._config.value_changed)
+	end
+	if self._value_changed then
+		self._value_changed()
+	end
 end
 
 function OptionModule:Load()
@@ -175,10 +186,8 @@ function OptionModule:_SetValue(tbl, name, value, full_name)
         tbl.value[name] = value
         if tbl.value_changed then
             tbl.value_changed(full_name, value)
-        end
-        if self._value_changed then
-            self._value_changed(full_name, value)
-        end
+		end
+		self:OnValueChanged(full_name, value)
     else
         if tbl[name] == nil then
             BeardLib:log(string.format("[ERROR] Option of name %q does not exist in mod, %s", name, self._mod.Name))
@@ -188,10 +197,8 @@ function OptionModule:_SetValue(tbl, name, value, full_name)
 
         if tbl[name].value_changed then
             tbl[name].value_changed(full_name, value)
-        end
-        if self._value_changed then
-            self._value_changed(full_name, value)
-        end
+		end
+		self:OnValueChanged(full_name, value)
     end
 end
 

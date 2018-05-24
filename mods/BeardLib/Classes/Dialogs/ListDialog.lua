@@ -130,7 +130,7 @@ function ListDialog:SearchCheck(t)
     end
     local match
     for _, s in pairs(self._filter) do
-        match = (self._case_sensitive and string.match(t, s) or not self._case_sensitive and string.match(t:lower(), s:lower())) 
+        match = (self._case_sensitive and string.find(t, s) or not self._case_sensitive and string.find(t:lower(), s:lower())) 
     end
     return match
 end
@@ -145,7 +145,7 @@ function ListDialog:MakeListItems(params)
         local t = type(v) == "table" and v.name or v
         if self:SearchCheck(t) then
             i = i + 1
-            if limit and i >= 250 then
+            if limit and i >= 500 then
                 break
             end
             local menu = self._list_menu

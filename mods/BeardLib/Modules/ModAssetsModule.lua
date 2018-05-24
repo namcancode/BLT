@@ -1,4 +1,4 @@
-ModAssetsModule = ModAssetsModule or class(ModuleBase)
+ModAssetsModule = ModAssetsModule or class(BasicModuleBase)
 ModAssetsModule.type_name = "AssetUpdates"
 ModAssetsModule._default_version_file = "version.txt"
 ModAssetsModule._providers = {}
@@ -11,11 +11,7 @@ if providers then
     end
 end
 
-function ModAssetsModule:init(core_mod, config)
-    if not ModAssetsModule.super.init(self, core_mod, config) then
-        return false
-    end
-
+function ModAssetsModule:Load()
     self.steamid = Steam:userid()
     self.id = self._config.id
 
@@ -36,9 +32,28 @@ function ModAssetsModule:init(core_mod, config)
         return
     end
 
-    self.folder_names = self._config.use_local_dir and {table.remove(string.split(self._mod.ModPath, "/"))} or (type(self._config.folder_name) == "string" and {self._config.folder_name} or BeardLib.Utils:RemoveNonNumberIndexes(self._config.folder_name))
-    self.install_directory = (self._config.install_directory and ModCore:GetRealFilePath(self._config.install_directory, self)) or (self._config.use_local_path ~= false and BeardLib.Utils.Path:GetDirectory(self._mod.ModPath)) or BeardLib.config.mod_override_dir
-    self.version_file = self._config.version_file and ModCore:GetRealFilePath(self._config.version_file, self) or BeardLib.Utils.Path:Combine(self.install_directory, self.folder_names[1], self._default_version_file)
+	local path = self._mod:GetPath()
+	
+	if not self._config.use_local_dir and self._config.folder_name then
+		local folder = self._config.folder_name
+		self.folder_names = (type(folder) == "string" and {folder} or BeardLib.Utils:RemoveNonNumberIndexes(folder))
+	else
+		self.folder_names = {table.remove(string.split(path, "/"))} 
+	end
+
+	if not self._config.use_local_path and self.install_directory then
+		local dir = self._config.install_directory
+		self.install_directory = ModCore:GetRealFilePath(dir, self) or BeardLib.config.mod_override_dir
+	else
+		self.install_directory = Path:GetDirectory(path)
+	end
+
+	if self._config.version_file then
+		self.version_file = ModCore:GetRealFilePath(self._config.version_file, self)
+	elseif not self._config.version then
+		self.version_file = Path:Combine(self.install_directory, self.folder_names[1], self._default_version_file)
+	end
+
     self.version = 0
     
     self._update_manager_id = self._mod.Name .. self._name
@@ -54,12 +69,10 @@ function ModAssetsModule:init(core_mod, config)
     if not self._config.manual_check then
         self:RegisterAutoUpdateCheckHook()
     end
-
-    return true
 end
 
 function ModAssetsModule:GetMainInstallDir()
-    return BeardLib.Utils.Path:GetDirectory(self.version_file)
+    return Path:Combine(self.install_directory, self.folder_names[1])
 end
 
 function ModAssetsModule:RegisterAutoUpdateCheckHook()
@@ -71,7 +84,7 @@ function ModAssetsModule:RegisterAutoUpdateCheckHook()
 end
 
 function ModAssetsModule:RetrieveCurrentVersion()
-    if FileIO:Exists(self.version_file) then
+    if self.version_file and FileIO:Exists(self.version_file) then
         local version = io.open(self.version_file):read("*all")
         if version then
             self.version = version
@@ -214,7 +227,7 @@ function ModAssetsModule:StoreDownloadedAssets(config, data, id)
         
         if self._config and not self._config.dont_delete then
             for _, dir in pairs(self.folder_names) do
-                local path = BeardLib.Utils.Path:Combine(self.install_directory, dir)
+                local path = Path:Combine(self.install_directory, dir)
                 if not FileIO:CanWriteTo(path) then
                     if config.failed_write then
                         config.failed_write()
@@ -298,8 +311,7 @@ function ModAssetsModule:InitializeNode(node)
 end
 
 DownloadCustomMap = DownloadCustomMap or class(ModAssetsModule)
-function DownloadCustomMap:init()
-end
+function DownloadCustomMap:init() end
 
 function DownloadCustomMap:DownloadFailed()
     BeardLibEditor.managers.Dialog:Show({title = managers.localization:text("mod_assets_error"), message = managers.localization:text("custom_map_failed_download"), force = true})

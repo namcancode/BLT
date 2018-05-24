@@ -8,7 +8,7 @@ function FileIO:Open(path, flags)
 end
 
 function FileIO:WriteTo(path, data, flags)
-	local dir = BeardLib.Utils.Path:GetDirectory(path)
+	local dir = Path:GetDirectory(path)
 	if not self:Exists(dir) then
 		self:MakeDir(dir)
 	end
@@ -63,33 +63,32 @@ function FileIO:ConvertScriptData(data, typ, clean)
     elseif typ == "binary" then
         new_data = ScriptSerializer:from_binary(data)
     end
-    return clean and BeardLib.Utils:CleanCustomXmlTable(new_data) or new_data
+    return clean and BeardLib.Utils.XML:Clean(new_data) or new_data
 end
 
-function FileIO:ConvertToScriptData(data, typ) 
-	local new_data
+function FileIO:ConvertToScriptData(data, typ, clean)
+	data = clean and BeardLib.Utils.XML:Clean(data) or data
     if typ == "json" then
-        new_data = json.custom_encode(data, true)
+        return json.custom_encode(data, true)
     elseif typ == "custom_xml" then
-        new_data = ScriptSerializer:to_custom_xml(data)
+        return ScriptSerializer:to_custom_xml(data)
     elseif typ == "generic_xml" then
-        new_data = ScriptSerializer:to_generic_xml(data)
+        return ScriptSerializer:to_generic_xml(data)
     elseif typ == "binary" then
-        new_data = ScriptSerializer:to_binary(data)
+        return ScriptSerializer:to_binary(data)
     end
-    return new_data
 end
 
-function FileIO:ReadScriptDataFrom(path, typ) 
+function FileIO:ReadScriptData(path, typ, clean) 
 	local read = self:ReadFrom(path, typ == "binary" and "rb")
 	if read then
-		return self:ConvertScriptData(read, typ)
+		return self:ConvertScriptData(read, typ, clean)
 	end
     return false
 end
 
-function FileIO:WriteScriptDataTo(path, data, typ)
-	return self:WriteTo(path, self:ConvertToScriptData(data, typ), typ == "binary" and "wb")
+function FileIO:WriteScriptData(path, data, typ, clean)
+	return self:WriteTo(path, self:ConvertToScriptData(data, typ, clean), typ == "binary" and "wb")
 end
 
 function FileIO:Exists(path)
@@ -108,7 +107,7 @@ function FileIO:Exists(path)
 end
 
 function FileIO:CopyFileTo(path, to_path)
-	local dir = BeardLib.Utils.Path:GetDirectory(to_path)
+	local dir = Path:GetDirectory(to_path)
 	if not self:Exists(dir) then
 		self:MakeDir(dir)
 	end
@@ -228,3 +227,6 @@ function FileIO:GetFolders(path)
 		return {}
 	end
 end
+
+function FileIO:ReadScriptDataFrom(...) return self:ReadScriptData(...) end
+function FileIO:WriteScriptDataTo(...) return self:WriteScriptData(...) end

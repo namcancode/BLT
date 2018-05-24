@@ -47,21 +47,43 @@ function Group:SetText(...)
     self:RePositionToggle()
 end
 
-function Group:ToggleGroup()
+function Group:UpdateGroup()
     if self.closed then
-        self.closed = false
-    else
-        self.closed = true
         self.panel:set_h(self:TextHeight())
     end
     for i, item in pairs(self._my_items) do
-        if item:ParentPanel() == self:ItemsPanel() then
+        if item:ParentPanel() == self:ItemsPanel() and (item.visible or item._hidden_by_menu) then --handle only visible items.
             item:SetVisible(not self.closed)
+            if self.closed then
+                item._hidden_by_menu = true
+            end
         end
     end
     self.toggle:set_texture_rect(self.closed and 42 or 2, self.closed and 2 or 0, 16, 16)
     self:AlignItems()
-    self:SetSize(nil, nil, true)
+    self:_SetSize(nil, nil, true)
+end
+
+function Group:_SetSize(w, h)
+	if self.closed then
+		h = self:TextHeight()
+	end
+	return Group.super._SetSize(self, w, h)
+end
+
+function Group:ToggleGroup()
+    self.closed = not self.closed
+    self:UpdateGroup()
+end
+
+function Group:CloseGroup()
+    self.closed = true
+    self:UpdateGroup()
+end
+
+function Group:OpenGroup()
+    self.closed = false
+    self:UpdateGroup()
 end
 
 function Group:MouseInside(x, y) 
@@ -77,8 +99,9 @@ function Group:MousePressed(button, x, y)
 end
 
 function Group:MouseMoved(x, y)
-    if not Group.super.MouseMoved(self, x, y) then
-        return BeardLib.Items.Item.MouseMoved(self, x, y)
+    local ret = BeardLib.Items.Item.MouseMoved(self, x, y)
+    if not ret then
+        ret = Group.super.MouseMoved(self, x, y)
     end
-    return false
+    return ret
 end

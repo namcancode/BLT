@@ -33,7 +33,7 @@ Hooks:Add(peer_send_hook, "BeardLibCustomHeistFix", function(self, func_name, pa
     end
 end)
 
-Hooks:Add(peer_send_hook, "BeardLibCustomWeaponFix", function(self, func_name, params)
+Hooks:Add("NetworkPeerSend", "BeardLibCustomWeaponFix", function(self, func_name, params)
     if self ~= managers.network:session():local_peer() then
         if func_name == "sync_outfit" then
 			local orig_outift = params[1]
@@ -41,12 +41,28 @@ Hooks:Add(peer_send_hook, "BeardLibCustomWeaponFix", function(self, func_name, p
 			orig_NetworkPeer_send(self, "send_chat_message", LuaNetworking.HiddenChannel, parse_as_lnetwork_string(send_outfit_id, orig_outift .. "|" .. params[2]))
 		elseif string.ends(func_name, "set_unit") then
 			params[3] = BeardLib.Utils:CleanOutfitString(params[3], params[4] == 0)
-        elseif func_name == "set_equipped_weapon" then
-            if params[2] == -1 then
+		elseif func_name == "set_equipped_weapon" then
+			if params[2] == -1 then
                 local index, data = BeardLib.Utils:GetCleanedWeaponData()
                 params[2] = index
-                params[3] = data
-            end
+				params[3] = data
+			else
+				local factory_id = PlayerInventory._get_weapon_name_from_sync_index(params[2])
+				local blueprint = managers.weapon_factory:unpack_blueprint_from_string(factory_id, params[3])
+				params[3] = managers.weapon_factory:blueprint_to_string(factory_id, BeardLib.Utils:GetCleanedBlueprint(blueprint, factory_id))
+			end
+		elseif func_name == "sync_grenades" then
+			params[1] = BeardLib.Utils:GetSpoofedGrenade(params[1])
+			params[2] = 3
+		elseif func_name == "sync_throw_projectile" then
+			local projectile_i = params[4]
+			if projectile_i then
+				local projectile_name = tweak_data.blackmarket:get_projectile_name_from_index(projectile_i)
+				if projectile_name then
+					projectile_name = BeardLib.Utils:GetSpoofedGrenade(projectile_name)
+					params[4] = tweak_data.blackmarket:get_index_from_projectile_id(projectile_name) or 1
+				end
+			end
         end
     end
 end)
@@ -152,13 +168,13 @@ end)
 
 local orig_NetworkPeer_set_outfit_string = NetworkPeer.set_outfit_string
 
-function NetworkPeer:set_outfit_string(outfit_string, outfit_version, outfit_signature)
+function NetworkPeer:set_outfit_string(outfit_string, outfit_version, outfit_signature, ...)
 	if outfit_signature == false then
 		self._real_outfit_string = outfit_string
 		return
 	end
 
-    orig_NetworkPeer_set_outfit_string(self, outfit_string, outfit_version, outfit_signature or self._signature)
+    orig_NetworkPeer_set_outfit_string(self, outfit_string, outfit_version, outfit_signature or self._signature, ...)
 
     if self._real_outfit_string then
 

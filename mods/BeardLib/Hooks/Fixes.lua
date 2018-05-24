@@ -161,7 +161,7 @@ elseif F == "coremenuitemslider" then
             row_item.gui_slider_text:set_text(self:show_value() and self:value_string() or string.format("%.0f", self:percentage()) .. "%")
         end
     end)
-elseif F == "newraycastweaponbase" then
+elseif F == "raycastweaponbase" then
     if RaycastWeaponBase._soundfix_should_play_normal then
         return --Don't run if fix installed.
     end
@@ -200,4 +200,32 @@ elseif F == "newraycastweaponbase" then
             self:play_tweak_data_sound("stop_fire")
         end
     end)
+elseif F == "playermovement" then
+    local trigger = PlayerMovement.trigger_teleport
+    function PlayerMovement:trigger_teleport(data, ...)
+        local state = self:current_state() -- just quick teleporting for VR players for now
+        if state and state._teleport_player then
+            state:_teleport_player(data.position)
+            return
+        end
+
+        data.fade_in = data.fade_in or 0
+        data.sustain = data.sustain or 0
+        data.fade_out = data.fade_out or 0
+        return trigger(self, data, ...)
+	end
+elseif F == "dialogmanager" then
+	Hooks:PreHook(DialogManager, "queue_dialog", "BeardLibQueueDialogFixIds", function(self, id)
+		if id and not managers.dialog._dialog_list[id] then
+			local sound = CustomSoundManager:GetSound(id)
+			if sound then
+				managers.dialog._dialog_list[id] = {
+					id = id,
+					sound = id,
+					string_id = sound.subtitle_id,
+					priority = sound.priority and tonumber(sound.priority) or tweak_data.dialog.DEFAULT_PRIORITY
+				}
+			end
+		end
+	end)
 end

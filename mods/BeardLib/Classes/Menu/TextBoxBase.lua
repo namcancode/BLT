@@ -231,7 +231,7 @@ end
 
 function TextBoxBase:enter_text(text, s)
     local number = self.owner.filter == "number"
-    if not self.menu:Enabled() or number and (tonumber(s) == nil and s ~= "-" and s ~= ".") then
+    if not self.menu:IsMouseActive() or number and (tonumber(s) == nil and s ~= "-" and s ~= ".") then
         return
     end
     for _, c in pairs(self._forbidden) do
@@ -300,7 +300,7 @@ function TextBoxBase:update_caret()
         h = h + self.owner.text_offset[2]
     end
     local old_h = self.panel:h()
-    if not self.owner.h and not self.lines or (self.lines > 1 and self.lines <= lines) then
+    if not self.owner.h and not self.lines or (self.lines > 1 and self.lines ~= lines) then
         self.panel:set_h(h)
         self.panel:parent():set_h(h)
         text:set_h(h)

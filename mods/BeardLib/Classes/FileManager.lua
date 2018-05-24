@@ -54,7 +54,7 @@ function fm:Process(ids_ext, ids_path, name_mt)
 							BeardLib:log("[WARNING] Script Mod with ID: '%s', Path:'%s.%s' may potentially overwrite changes from other mods! Continuing...", id, k_path, k_ext)							
 						end
 					end
-					local new_data = mdata.tbl or FileIO:ReadScriptDataFrom(mdata.file, mdata.type)
+					local new_data = mdata.tbl or FileIO:ReadScriptData(mdata.file, mdata.type)
 					if new_data then
                         if ids_ext == Idstring("nav_data") then
                             BeardLib.Utils:RemoveMetas(new_data)
@@ -85,7 +85,6 @@ end
 local texture_key = "8c5b5ab050e16853" 
 function fm:AddFile(ext, path, file)
 	if not DB.create_entry then
-		BeardLib:log("[ERROR] Cannot add files!")
 		return
 	end
 
@@ -98,6 +97,14 @@ function fm:AddFile(ext, path, file)
 	Global.fm.added_files[k_ext][path:key()] = file
 	if k_ext == texture_key then
 		Application:reload_textures({path})
+	end
+end
+
+function fm:AddFileWithCheck(ext, path, file)
+	if FileIO:Exists(file) then
+		self:AddFile(ext, path, file)
+	else
+		BeardLib:log("[ERROR] File does not exist! %s", tostring(file))
 	end
 end
 

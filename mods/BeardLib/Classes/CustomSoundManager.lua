@@ -1,17 +1,19 @@
 CustomSoundManager = CustomSoundManager or {}
 local C = CustomSoundManager
+local default_prefix = {"global"}
 C.sources = {}
 C.stop_ids = {}
 C.float_ids = {}
 C.engine_sources = {}
+C.sound_ids = {global = {}}
 C.buffers = {global = {}}
 C.redirects = {global = {}}
 C.delayed_buffers = {global = {}}
 C.Closed = XAudio == nil
 
-function C:CheckSoundID(sound_id, engine_source)
-    if self.Closed then
-        return false
+function C:CheckSoundID(sound_id, engine_source, clbk, cookie)
+	if self.Closed then
+        return nil
     end
     
     if tonumber(sound_id) then
@@ -26,45 +28,30 @@ function C:CheckSoundID(sound_id, engine_source)
         BeardLib:log("Incoming sound check: ID %s Prefixes %s", tostring(sound_id), tostring(prefixes and table.concat(prefixes, ", ") or "none"))
     end
 
-    local stop_id = self.stop_ids[sound_id]
-    if stop_id then
-        local buffer = self:GetLoadedBuffer(stop_id, prefixes, true)
-        if buffer then
-            local new_sources = {}
-            for _, tbl in pairs(self.sources) do
-                local source = tbl.source
-                if source and not source:is_closed() then
-                    local sndbuff = source._buffer
-                    if sndbuff then
-                        if sndbuff == buffer then
-                            source:close()
-                        else
-                            table.insert(new_sources, tbl)
-                        end
-                    end
-                end
-            end
-            self.sources = new_sources
-        end
-        return false
+    local stop_ids = self.stop_ids[sound_id]
+	if stop_ids then
+		for _, stop_id in pairs(stop_ids) do
+			local new_sources = {}
+			for _, source in pairs(self.sources) do
+				if source and not source:is_closed() then
+					if source:sound_id() == stop_id then
+						source:close()
+					else
+						table.insert(new_sources, source)
+					end
+				end
+			end
+			self.sources = new_sources
+		end
+        return nil
     end
 
-    local buffer = self:GetLoadedBuffer(sound_id, prefixes)
-    
-    if buffer then
-        self:AddSource(engine_source, buffer)
-        return true
+    local source = self:AddSource(sound_id, prefixes, engine_source, clbk, cookie)
+    if source then
+		return source
     else
-        return false
+        return nil
     end
-end
-
-function C:Sources()
-    return self.sources
-end
-
-function C:Buffers()
-    return self.buffers
 end
 
 function C:GetDelayedBuffer(sound_id, prefixes)
@@ -108,18 +95,40 @@ function C:GetLoadedBuffer(sound_id, prefixes, no_load)
     return nil
 end
 
+function C:StoreFloat(sound_id, stop_id)
+	self.float_ids[SoundDevice:string_to_id(sound_id)] = sound_id
+	if stop_id then
+		self.float_ids[SoundDevice:string_to_id(stop_id)] = stop_id
+	end
+end
+
+function C:AddStop(stop_id, sound_id)
+	self.stop_ids[stop_id] = self.stop_ids[stop_id] or {}
+	table.insert(self.stop_ids[stop_id], sound_id)
+end
+
+function C:AddSoundID(data)
+	local sound_id, stop_id = data.id, data.stop_id
+    if not data.dont_store_float then
+		self:StoreFloat(sound_id, stop_id)
+	end
+
+	if stop_id then
+		self:AddStop(stop_id, sound_id)
+	end
+
+	for _, prefix in pairs(data.prefixes or default_prefix) do
+		self.sound_ids[prefix] = self.sound_ids[prefix] or {}
+		self.sound_ids[prefix][sound_id] = data
+	end
+end
+
 function C:AddBuffer(data, force)
     if self.Closed then
         return
-    end
-
-    local sound_id, stop_id = data.id, data.stop_id
-    if not data.dont_store_float then
-        self.float_ids[SoundDevice:string_to_id(sound_id)] = sound_id
-        if stop_id then
-            self.float_ids[SoundDevice:string_to_id(stop_id)] = stop_id
-        end
-    end
+	end
+	
+	local sound_id = data.id
     local prefix = data.prefix
     if not force and data.load_on_play then
         if prefix then
@@ -141,10 +150,7 @@ function C:AddBuffer(data, force)
     local buffer = XAudio.Buffer:new(data.full_path)
     local close_previous = data.close_previous
     buffer.data = data
-    
-    if stop_id then
-        self.stop_ids[stop_id] = sound_id
-    end
+
     if prefix then
         local prefix_tbl = self.buffers[prefix]
         if not prefix_tbl then
@@ -166,28 +172,52 @@ function C:AddBuffer(data, force)
             end
         end
         self.buffers.global[sound_id] = buffer
-    end
+	end
+	
+	self:AddSoundID(table.merge({queue = {{id = sound_id}}}, data))
+
     return buffer
 end
 
-function C:AddSource(engine_source, buffer) 
-    if self.Closed then
-        return
-    end
-       
-    local source = XAudio.Source:new(buffer)
-    local source_tbl = {engine_source = engine_source, source = source}
-    if engine_source:is_relative() or buffer.data.relative then
-        source:set_relative(true)
-        if not buffer.data.auto_pause then
-            source:set_auto_pause(false)
-        end
-    else
-        source:set_position(engine_source:get_position())
-    end
-    source:set_looping(buffer.data.loop)
-    table.insert(self.sources, source_tbl)
-    return source_tbl
+function C:GetSound(sound_id, prefixes) 
+	prefixes = prefixes or default_prefix
+	for _, prefix in pairs(prefixes) do
+		local sound = self.sound_ids[prefix] and self.sound_ids[prefix][sound_id]
+		if sound then
+			return sound
+		end
+	end
+end
+
+function C:AddSource(sound_id, prefixes, engine_source, clbk, cookie) 
+	if self.Closed then
+		return
+	end
+	
+	prefixes = prefixes or default_prefix
+	local sound = self:GetSound(sound_id, prefixes)
+
+	if sound then
+		local queue = {}
+		for _, data in pairs(sound.queue) do
+			--if not buffer, assume it's a vanilla sound.
+			table.insert(queue, {buffer = self:GetLoadedBuffer(data.id, prefixes), data = data})
+		end
+
+		if #queue > 0 then
+			local source = MixedSoundSource:new(sound_id, queue, engine_source, clbk, cookie)
+			if sound.loop then
+				source:set_looping(sound.loop)
+			end
+			if sound.volume then
+				source:set_volume(sound.volume)
+			end
+			table.insert(self.sources, source)
+			return source
+		end
+	end
+	
+	return nil
 end
 
 function C:Redirect(id, prefixes)
@@ -211,10 +241,6 @@ function C:AddRedirect(id, to, prefix)
     else
         self.redirects.global[id] = to
     end
-end
-
-function C:IsClosed()
-    return self.Closed
 end
 
 function C:CloseBuffer(sound_id, prefix, soft)
@@ -241,10 +267,9 @@ end
 
 function C:Stop(engine_source)
     local new_sources = {}
-    for _, tbl in pairs(self.sources) do
-        local source = tbl.source
-        if source and not source:is_closed() then
-            if tbl.engine_source == engine_source then
+	for _, source in pairs(self.sources) do
+		if not source:is_closed() then
+            if source._engine_source == engine_source then
                 source:close()
             else
                 table.insert(new_sources, tbl)
@@ -273,18 +298,122 @@ function C:update(t, dt)
     if self.Closed then
         return
     end
-    for i, tbl in pairs(self.sources) do
-        local source = tbl.source
-        local engine_source = tbl.engine_source
-        if source and not source:is_closed() then
-            local position = engine_source:get_position()
-            if position then
-                source:set_position(position)
-            end
-        else
-            table.remove(self.sources, i)
-        end
+    for i, source in pairs(self.sources) do
+        if source:is_closed() then
+			table.remove(self.sources, i)
+		end
     end
+end
+
+function C:IsClosed() return self.Closed end
+function C:Queued() return self.queued end
+function C:Redirects() return self.redirects end
+function C:DelayedBuffers() return self.delayed_buffers end
+function C:Sources() return self.sources end
+function C:Buffers() return self.buffers end
+
+function C:Open()
+	if self.Closed then
+		return
+	end
+	if XAudio and SoundSource and Unit then
+		local SoundSource = SoundSource
+		if type(SoundSource) == "userdata" then
+			SoundSource = getmetatable(SoundSource)
+		end
+		local sources = CustomSoundManager.engine_sources
+	
+		local Unit = Unit
+		if type(Unit) == "userdata" then
+			Unit = getmetatable(Unit)
+		end
+	
+		local orig = Unit.sound_source
+		function Unit:sound_source(...)
+			local ss = orig(self, ...)
+			if ss then
+				ss:set_link_object(self)
+			end
+			return ss
+		end
+		
+		function SoundSource:get_data()
+			--:(
+			local key = self:key()
+			local data = sources[key] or {}
+			sources[key] = data 
+			return data
+		end
+	
+		--Thanks for not making get functions ovk :)
+		function SoundSource:get_link()
+			return self:get_data().linking
+		end
+	
+		--If no position is set or is not linking to anything then we can assume it's a 2D sound.
+		function SoundSource:is_relative()
+			return self:get_position() == nil
+		end
+	
+		function SoundSource:get_position()
+			local data = self:get_data()
+			if data.position then
+				return data.position 
+			else
+				local link = self:get_link()
+				return alive(link) and link:position() or nil
+			end
+		end
+	
+		function SoundSource:get_switch()
+			return self:get_data().switch
+		end
+	
+		function SoundSource:get_prefixes()
+			return self:get_data().mapped_prefixes
+		end
+	
+		function SoundSource:set_link_object(object)
+			self:get_data().linking = object
+		end
+	
+		Hooks:PostHook(SoundSource, "stop", "BeardLibStopSounds", function(self)
+			CustomSoundManager:Stop(self)
+		end)
+	
+		Hooks:PostHook(SoundSource, "link", "BeardLibLink", function(self, object)
+			self:set_link_object(object)
+		end)
+	
+		Hooks:PostHook(SoundSource, "link_position", "BeardLibLinkPosition", function(self, object)
+			self:set_link_object(object)
+		end)
+	
+		Hooks:PostHook(SoundSource, "set_position", "BeardLibSetPosition", function(self, position)
+			self:get_data().position = position
+		end)
+	
+		Hooks:PostHook(SoundSource, "set_switch", "BeardLibSetSwitch", function(self, group, state)
+			local data = self:get_data()
+			data.switch = data.switch or {}
+			data.switch[group] = state
+			data.mapped_prefixes = table.map_values(data.switch)
+		end)
+	
+		SoundSource._post_event = SoundSource._post_event or SoundSource.post_event
+
+		function SoundSource:post_event(event, clbk, cookie, ...)
+			event = CustomSoundManager:Redirect(event, self:get_prefixes())
+			local custom_source = CustomSoundManager:CheckSoundID(event, self, clbk, cookie)
+			if custom_source then
+				return custom_source
+			else
+				return self:_post_event(event, clbk, cookie, ...)
+			end
+		end
+	else
+		BeardLib:log("Something went wrong when trying to initialize the custom sound manager hook")
+	end
 end
 
 return C

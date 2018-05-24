@@ -256,6 +256,20 @@ function mrotation.set_roll(rot, roll)
     return mrotation.set_yaw_pitch_roll(rot, rot:yaw(), rot:pitch(), roll)
 end
 
+function mrotation.step(rot, rot_a, rot_b, t)
+	mrotation.set_yaw_pitch_roll(
+		rot,
+		math.step(rot_a:yaw(), rot_b:yaw(), t),
+		math.step(rot_a:pitch(), rot_b:pitch(), t),
+		math.step(rot_a:roll(), rot_b:roll(), t)
+	)
+	return rot
+end
+
+function mrotation.add(rot, rot_a, rot_b)
+	mrotation.set_yaw_pitch_roll(rot, rot_a:yaw() + rot_b:yaw(), rot_a:pitch() + rot_b:pitch(), rot_a:roll() + rot_b:roll())
+end
+
 function string.pretty2(str)
     str = tostring(str)
     return str:gsub("([^A-Z%W])([A-Z])", "%1 %2"):gsub("([A-Z]+)([A-Z][^A-Z$])", "%1 %2")
@@ -476,6 +490,14 @@ function BeardLib.Utils:GetCleanedBlueprint(blueprint, factory_id)
     return new_blueprint
 end
 
+function BeardLib.Utils:GetSpoofedGrenade(grenade)
+	local grenade_tweak = tweak_data.blackmarket.projectiles[grenade]
+	if grenade_tweak and grenade_tweak.custom then
+		return grenade_tweak.based_on or managers.blackmarket._defaults.grenade
+	end
+	return grenade
+end
+
 function BeardLib.Utils:CleanOutfitString(str, is_henchman)
     local bm = managers.blackmarket
     local factory = tweak_data.weapon.factory
@@ -522,27 +544,31 @@ function BeardLib.Utils:CleanOutfitString(str, is_henchman)
     	end
     end
 
-	if not is_henchman and list.secondary then
-        local secondary = list.secondary.factory_id
-        if factory[secondary].custom then
-    		list.secondary.factory_id = self:GetBasedOnFactoryId(secondary) or self.WeapConv[1]
-            list.secondary.blueprint = factory[list.secondary.factory_id].default_blueprint
-    	end
+	if not is_henchman then
+		if list.secondary then
+			local secondary = list.secondary.factory_id
+			if factory[secondary].custom then
+				list.secondary.factory_id = self:GetBasedOnFactoryId(secondary) or self.WeapConv[1]
+				list.secondary.blueprint = factory[list.secondary.factory_id].default_blueprint
+			end
 
-        local melee = tweak_data.blackmarket.melee_weapons[list.melee_weapon]
-        if melee and melee.custom then
-            local based_on = melee.based_on
-            local melee = tweak_data.upgrades.definitions[based_on] 
-            if not melee or (melee.dlc and not managers.dlc:is_dlc_unlocked(melee.dlc)) then
-                based_on = nil
-            end
-            list.melee_weapon = based_on or "weapon"
-        end
+			local melee = tweak_data.blackmarket.melee_weapons[list.melee_weapon]
+			if melee and melee.custom then
+				local based_on = melee.based_on
+				local melee = tweak_data.upgrades.definitions[based_on] 
+				if not melee or (melee.dlc and not managers.dlc:is_dlc_unlocked(melee.dlc)) then
+					based_on = nil
+				end
+				list.melee_weapon = based_on or "weapon"
+			end
 
-        for _, weap in pairs({list.primary, list.secondary}) do
-            weap.blueprint = self:GetCleanedBlueprint(weap.blueprint, weap.factory_id)
-    	end
-    end
+			for _, weap in pairs({list.primary, list.secondary}) do
+				weap.blueprint = self:GetCleanedBlueprint(weap.blueprint, weap.factory_id)
+			end
+		end
+
+		list.grenade = self:GetSpoofedGrenade(list.grenade)
+	end
 	return self:OutfitStringFromList(list, is_henchman)
 end
 
@@ -560,7 +586,11 @@ end
 local searchTypes = {
     "Vector3",
     "Rotation",
-    "Color",
+	"Color",
+	"SimpleClbk",
+	"ClassClbk",
+	"SafeClassClbk",
+	"SafeClbk",
     "callback"
 }
 
@@ -737,6 +767,10 @@ function BeardLib.Utils:UrlEncode(str)
 	return string.gsub(str, ".", encode_chars)
 end
 
+function BeardLib.Utils:ModExists(name)
+	return self:FindMod(name) ~= nil
+end
+
 function BeardLib.Utils:FindMod(name)
     for _, mod in pairs(BeardLib.Mods) do
         if mod.Name == name then
@@ -815,10 +849,16 @@ function BeardLib.Utils.Path:Normalize(str)
 	return str
 end
 
+function BeardLib.Utils.Path:CombineDir(...)
+	local s = self:Combine(...)
+	return s .. "/"
+end
+
 function BeardLib.Utils.Path:Combine(start, ...)
 	local paths = {...}
 	local final_string = start
-	for i, path_part in pairs(paths) do
+    for i, path_part in pairs(paths) do
+        path_part = tostring(path_part)
 		if string.begins(path_part, ".") then
 			path_part = string.sub(path_part, 2, #path_part)
 		end
@@ -958,13 +998,28 @@ function ClassClbk(clss, func, a, b, c, ...)
     end
 end
 
+function Color:color()
+	return self
+end
+
+function Color:vector()
+	return Vector3(self.r, self.g, self.b)
+end
+
+function Vector3:vector()
+	return self
+end
+
+function Vector3:color()
+	return Color(self:unpack())
+end
+
 --If only Color supported alpha for hex :P
 function Color:from_hex(hex)
     if type_name(hex) == "Color" then
         return hex
     end
     if not hex or type(hex) ~= "string" then
-        log(debug.traceback())
         return Color()
     end
     if hex:match("#") then
