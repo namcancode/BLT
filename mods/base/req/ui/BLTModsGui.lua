@@ -5,6 +5,8 @@ BLT:Require("req/ui/BLTViewModGui")
 
 BLTModsGui = BLTModsGui or blt_class( MenuGuiComponentGeneric )
 BLTModsGui.last_y_position = 0
+BLTModsGui.show_libraries = false
+BLTModsGui.show_mod_icons = true
 
 local padding = 10
 
@@ -24,6 +26,13 @@ local function make_fine_text( text )
 	text:set_position( math.round( text:x() ), math.round( text:y() ) )
 end
 
+local function make_fine_text_aligning(text)
+	-- Make fine text, but use the text rect X and Y in set_position
+	local x,y,w,h = text:text_rect()
+	text:set_size(w, h)
+	text:set_position(math.round(x), math.round(y))
+end
+
 function BLTModsGui:init( ws, fullscreen_ws, node )
 
 	self._ws = ws
@@ -34,6 +43,7 @@ function BLTModsGui:init( ws, fullscreen_ws, node )
 
 	self._data = node:parameters().menu_component_data or {}
 	self._buttons = {}
+	self._custom_buttons = {}
 
 	self:_setup()
 
@@ -71,6 +81,12 @@ function BLTModsGui:_setup()
 	back_button:set_bottom( self._panel:h() - 10 )
 	back_button:set_visible( managers.menu:is_pc_controller() )
 	self._back_button = back_button
+	self._custom_buttons[back_button] = {
+		clbk = function()
+			managers.menu:back()
+			return true
+		end
+	}
 
 	local bg_back = self._fullscreen_panel:text({
 		name = "back_button",
@@ -106,12 +122,135 @@ function BLTModsGui:_setup()
 		vertical = "top",
 	})
 
+	-- Toggle libraries visible button
+	local padding = 10
+	local params = {
+		x = padding,
+		y = padding,
+		width = self._panel:w() - padding*2,
+		height = large_font_size,
+
+		color = tweak_data.screen_colors.button_stage_3,
+
+		font = tweak_data.menu.pd2_small_font,
+		font_size = tweak_data.menu.pd2_small_font_size,
+		vertical = "bottom",
+		align = "right",
+	}
+
+	local function customize(changes)
+		return table.map_append(table.map_copy(params), changes)
+	end
+
+	-- Count the number of libraries installed
+	local libs_count = 0
+	for i, mod in ipairs( BLT.Mods:Mods() ) do
+		if mod:IsLibrary() then
+			libs_count = libs_count + 1
+		end
+	end
+
+	-- Add the libraries label
+	local libraries_text = self._panel:text(customize({
+		text = managers.localization:to_upper_text("blt_libraries", {count=libs_count}),
+		color = tweak_data.screen_colors.text,
+	}))
+
+	-- Shift the show and hide buttons to the left of the libraries label
+	make_fine_text_aligning(libraries_text)
+	params.width = libraries_text:x() - params.x - 4 -- 4px padding
+
+	self._libraries_show_button = self._panel:text(customize({
+		text = managers.localization:to_upper_text("menu_button_show"),
+	}))
+
+	self._libraries_hide_button = self._panel:text(customize({
+		text = managers.localization:to_upper_text("menu_button_hide"),
+	}))
+
+	make_fine_text_aligning(self._libraries_show_button)
+	make_fine_text_aligning(self._libraries_hide_button)
+
+	self._custom_buttons[self._libraries_show_button] = {
+		clbk = function()
+			BLTModsGui.show_libraries = true
+			self:update_visible_mods()
+			return true
+		end,
+	}
+	self._custom_buttons[self._libraries_hide_button] = {
+		clbk = function()
+			BLTModsGui.show_libraries = false
+			self:update_visible_mods()
+			return true
+		end,
+	}
+
+	-- Set up the toggle icons button
+	params.width = self._panel:w() - padding*2
+	params.height = params.height - small_font_size
+
+	local icons_text = self._panel:text(customize({
+		text = managers.localization:to_upper_text("blt_mod_icons"),
+		color = tweak_data.screen_colors.text,
+	}))
+
+	-- Shift the show and hide buttons to the left of the label
+	make_fine_text_aligning(icons_text)
+	params.width = icons_text:x() - params.x - 4 -- 4px padding
+
+	self._mod_icons_show_button = self._panel:text(customize({
+		text = managers.localization:to_upper_text("menu_button_show"),
+	}))
+
+	self._mod_icons_hide_button = self._panel:text(customize({
+		text = managers.localization:to_upper_text("menu_button_hide"),
+	}))
+
+	make_fine_text_aligning(self._mod_icons_show_button)
+	make_fine_text_aligning(self._mod_icons_hide_button)
+
+	self._custom_buttons[self._mod_icons_show_button] = {
+		clbk = function()
+			BLTModsGui.show_mod_icons = true
+			self:update_visible_mods()
+			return true
+		end,
+	}
+	self._custom_buttons[self._mod_icons_hide_button] = {
+		clbk = function()
+			BLTModsGui.show_mod_icons = false
+			self:update_visible_mods()
+			return true
+		end,
+	}
+
 	-- Mods scroller
 	local scroll_panel = self._panel:panel({
 		h = self._panel:h() - large_font_size * 2 - padding * 2,
 		y = large_font_size,
 	})
 	self._scroll = ScrollablePanel:new( scroll_panel, "mods_scroll", {} )
+
+	self:update_visible_mods(BLTModsGui.last_y_position)
+
+end
+
+function BLTModsGui:update_visible_mods(scroll_position)
+	-- Update the show libraries and mod icons button
+	self._libraries_show_button:set_visible(not BLTModsGui.show_libraries)
+	self._libraries_hide_button:set_visible(BLTModsGui.show_libraries)
+
+	self._mod_icons_show_button:set_visible(not BLTModsGui.show_mod_icons)
+	self._mod_icons_hide_button:set_visible(BLTModsGui.show_mod_icons)
+
+	-- Save the position of the scroll panel
+	BLTModsGui.last_y_position = scroll_position or self._scroll:canvas():y() * -1
+
+	-- Clear the scroll panel
+	self._scroll:canvas():clear()
+	self._scroll:update_canvas_size() -- Ensure the canvas always starts at it's maximum size
+	self._buttons = {}
 
 	-- Create download manager button
 	local title_text = managers.localization:text("blt_download_manager")
@@ -125,7 +264,7 @@ function BLTModsGui:_setup()
 		x = 0,
 		y = 0,
 		w = (self._scroll:canvas():w() - (BLTModItem.layout.x + 1) * padding) / BLTModItem.layout.x,
-		h = 256,
+		h = 256 + (BLTModsGui.show_mod_icons and 0 or padding),
 		title = title_text,
 		text = managers.localization:text("blt_download_manager_help"),
 		image = icon,
@@ -136,9 +275,18 @@ function BLTModsGui:_setup()
 	table.insert( self._buttons, button )
 
 	-- Create mod boxes
-	for i, mod in ipairs( BLT.Mods:Mods() ) do
-		local item = BLTModItem:new( self._scroll:canvas(), i + 1, mod )
-		table.insert( self._buttons, item )
+	for _, mod in ipairs( BLT.Mods:Mods() ) do
+		if BLTModsGui.show_libraries or not mod:IsLibrary() then
+			local i = #self._buttons + 1
+
+			-- Wrap mods around the download button, if mod icons are disabled
+			if i >= 5 and not BLTModsGui.show_mod_icons then
+				i = i + 1
+			end
+
+			local item = BLTModItem:new( self._scroll:canvas(), i, mod, BLTModsGui.show_mod_icons )
+			table.insert( self._buttons, item )
+		end
 	end
 
 	-- Update scroll size
@@ -166,15 +314,19 @@ function BLTModsGui:mouse_moved( button, x, y )
 
 	local used, pointer
 
-	if alive(self._back_button) and self._back_button:visible() then
-		if self._back_button:inside(x, y) then
-			if self._back_button:color() ~= tweak_data.screen_colors.button_stage_2 then
-				self._back_button:set_color( tweak_data.screen_colors.button_stage_2 )
-				managers.menu_component:post_event( "highlight" )
+	for button, data in pairs(self._custom_buttons) do
+		if alive(button) and button:visible() then
+			if button:inside(x, y) then
+				local colour = data.selected_colour or tweak_data.screen_colors.button_stage_2
+				if button:color() ~= colour then
+					button:set_color(colour)
+					managers.menu_component:post_event("highlight")
+				end
+				used, pointer = true, "link"
+				break
+			else
+				button:set_color(data.deselected_colour or tweak_data.screen_colors.button_stage_3)
 			end
-			used, pointer = true, "link"
-		else
-			self._back_button:set_color( tweak_data.screen_colors.button_stage_3 )
 		end
 	end
 
@@ -221,10 +373,9 @@ function BLTModsGui:mouse_pressed( button, x, y )
 
 	if button == Idstring( "0" ) then
 
-		if alive(self._back_button) and self._back_button:visible() then
-			if self._back_button:inside(x, y) then
-				managers.menu:back()
-				return true
+		for button, data in pairs(self._custom_buttons) do
+			if alive(button) and button:visible() and button:inside(x, y) then
+				return data.clbk()
 			end
 		end
 
@@ -280,29 +431,30 @@ function BLTModsGui:mouse_wheel_down( x, y )
 	end
 end
 
+-- Load and save settings from savefile
+local function load_data(cache)
+	local data = cache.mods_gui
+	if data then
+		BLTModsGui.show_libraries = data.show_libraries
+		BLTModsGui.show_mod_icons = data.show_mod_icons
+		log("Loading mod settings : " .. tostring(cache.show_libraries))
+	end
+end
+Hooks:Add("BLTOnLoadData", "BLTOnLoadData.BLTModsGui", load_data)
+
+-- If the data has already been loaded, use it now
+if BLT.Mods._saved_data then
+	load_data(BLT.Mods._saved_data)
+end
+
+Hooks:Add("BLTOnSaveData", "BLTOnSaveData.BLTModsGui", function(cache)
+	cache.mods_gui = {
+		show_libraries = BLTModsGui.show_libraries,
+		show_mod_icons = BLTModsGui.show_mod_icons,
+	}
+end)
+
 --------------------------------------------------------------------------------
 -- Patch MenuComponentManager to create the BLT Mods component
 
-Hooks:Add("MenuComponentManagerInitialize", "BLTModsGui.MenuComponentManagerInitialize", function(menu)
-	menu._active_components["blt_mods"] = { create = callback(menu, menu, "create_blt_mods_gui"), close = callback(menu, menu, "close_blt_mods_gui") }
-end)
-
-function MenuComponentManager:blt_mods_gui()
-	return self._blt_mods_gui
-end
-
-function MenuComponentManager:create_blt_mods_gui( node )
-	if not node then
-		return
-	end
-	self._blt_mods_gui = self._blt_mods_gui or BLTModsGui:new( self._ws, self._fullscreen_ws, node )
-	self:register_component( "blt_mods_gui", self._blt_mods_gui )
-end
-
-function MenuComponentManager:close_blt_mods_gui()
-	if self._blt_mods_gui then
-		self._blt_mods_gui:close()
-		self._blt_mods_gui = nil
-		self:unregister_component( "blt_mods_gui" )
-	end
-end
+MenuHelper:AddComponent("blt_mods", BLTModsGui)

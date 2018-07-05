@@ -66,8 +66,12 @@ function BLTUpdate:clbk_got_update_data( clbk, json_data, http_id )
 
 	if json_data:is_nil_or_empty() then
 		log("[Error] Could not connect to the download server!")
-		return self:_run_update_callback( clbk, false, "Could not connect to the download server." )
+		self._error = "Could not connect to the download server."
+		return self:_run_update_callback( clbk, false, self._error )
 	end
+
+	-- We're done checking for updates
+	self._requesting_updates = false
 
 	local server_data = json.decode( json_data )
 	if server_data then
@@ -80,7 +84,7 @@ function BLTUpdate:clbk_got_update_data( clbk, json_data, http_id )
 				local check_hash = function(local_hash)
 					self._requesting_updates = false
 
-					log(string.format("[Updates] Comparing hash data:\nServer: %s\n Local: %s", data.hash, local_hash))
+					log(string.format("[Updates] Comparing hash data for %s:\nServer: %s\n Local: %s", data.ident, data.hash, local_hash))
 					if data.hash then
 						if data.hash ~= local_hash then
 							return self:_run_update_callback( clbk, true )
@@ -95,15 +99,33 @@ function BLTUpdate:clbk_got_update_data( clbk, json_data, http_id )
 				self._server_hash = data.hash
 				local hash_result = self:GetHash(check_hash)
 
-				if not hash_result or hash_result ~= true then
-					check_hash(hash_result)
+				-- Nil indicates the file to hash was missing
+				-- True indicates our callback will be run at a later date
+				-- A string is the hashed value
+				if not hash_result then
+					-- Errored, file does not exist
+					self._error = "File to be version checked was missing on local machine"
+					log("[Updates] " .. self._error .. " mod " .. self:GetId())
+					return self:_run_update_callback( clbk, false, self._error )
+				elseif hash_result ~= true then
+					-- Manually check the hash, since we're running on an old
+					-- version of the DLL that doesn't support the callbacks
+					return check_hash(hash_result)
+				else
+					-- At this point we've started the hash callback
+					-- Keep 'Checking for Updates' until the hash is complete
+					-- as this is set to false above in the check_hash callback
+					self._requesting_updates = true
+					return
 				end
 			end
 		end
 		
 	end
 
-	return self:_run_update_callback( clbk, false, "No valid mod ID was returned by the server." )
+	self._error = "No valid mod ID was returned by the server."
+	log("[Updates] Invalid or corrupt update data for mod " .. self:GetId())
+	return self:_run_update_callback( clbk, false, self._error )
 
 end
 
@@ -200,4 +222,8 @@ function BLTUpdate:IsPresent()
 	end
 
 	return true
+end
+
+function BLTUpdate:GetError()
+	return self._error
 end

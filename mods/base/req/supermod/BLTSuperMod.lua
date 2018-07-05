@@ -47,6 +47,9 @@ function BLTSuperMod:_load_xml(xml, parent_scope)
 		hooks = function(tag, scope)
 			self:_add_hooks(tag, scope)
 		end,
+		native_module = function(tag, scope)
+			self:_add_native_module(tag, scope)
+		end,
 
 		-- These tags are used by the Wren-based XML Tweaker
 		wren = function(tag, scope) end,
@@ -62,6 +65,9 @@ function BLTSuperMod:_add_hooks(xml, parent_scope)
 		post = function(tag, scope)
 			self:_add_hook(tag, scope, "hooks", "post")
 		end,
+		entry = function(tag, scope)
+			self:_run_entry_script(tag, scope, "hooks", "post")
+		end,
 		wildcard = function(tag, scope)
 			error("TODO implement wildcard")
 		end,
@@ -76,6 +82,33 @@ function BLTSuperMod:_add_hook(tag, scope, data_key, destination)
 	assert(script_path, "missing parameter script_path in " .. tag._doc.filename)
 
 	self._mod:AddHook(data_key, hook_id, script_path, BLT.hook_tables[destination])
+end
+
+function BLTSuperMod:_run_entry_script(tag, scope, data_key, destination)
+	BLT:RunHookFile(scope.script_path, {
+		mod = self._mod,
+		script = scope.script_path
+	})
+end
+
+function BLTSuperMod:_add_native_module(tag, scope)
+	if scope.loading_vector == "preload" then
+		return -- Uses Wren
+	end
+
+	if not blt.load_native or not blt.blt_info then
+		log("[BLT] Cannot load native module for mod " .. self._mod:GetId()
+			.. " as such functionality is not available in this version of the SuperBLT DLL/SO")
+		return
+	end
+
+	if blt.blt_info().platform ~= scope.platform then
+		log("[BLT] Incorrect platform for native module for " .. self._mod:GetId())
+		return
+	end
+
+	log("[BLT] Loading native module for " .. self._mod:GetId())
+	blt.load_native(self._mod:GetPath() .. scope.filename)
 end
 
 function BLTSuperMod:_replace_includes(xml)

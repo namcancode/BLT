@@ -25,11 +25,12 @@ BLTModItem.layout = {
 }
 BLTModItem.image_size = 108
 
-function BLTModItem:init( panel, index, mod )
+function BLTModItem:init( panel, index, mod, show_icon )
 
 	local w = (panel:w() - (self.layout.x + 1) * padding) / self.layout.x
-	local h = 256
+	local h = show_icon and 256 or 128
 	local column, row = self:_get_col_row( index )
+	local icon_size = 32
 
 	self._mod = mod
 
@@ -81,11 +82,12 @@ function BLTModItem:init( panel, index, mod )
 		vertical = "top",
 		wrap = true,
 		word_wrap = true,
-		w = self._panel:w() - padding * 2,
 	})
 	make_fine_text( mod_name )
-	mod_name:set_center_x( self._panel:w() * 0.5 )
-	mod_name:set_top( self._panel:h() * 0.5 )
+	local name_padding = show_icon and padding or (icon_size + 4 + padding)
+	mod_name:set_x( name_padding )
+	mod_name:set_width( self._panel:w() - mod_name:x() - name_padding )
+	mod_name:set_top( self._panel:h() * (show_icon and 0.5 or 0.1) )
 
 	-- Mod description
 	local mod_desc = self._panel:text({
@@ -108,7 +110,7 @@ function BLTModItem:init( panel, index, mod )
 
 	-- Mod image
 	local image_path
-	if mod:HasModImage() then
+	if show_icon and mod:HasModImage() then
 		image_path = mod:GetModImage()
 	end
 
@@ -123,7 +125,7 @@ function BLTModItem:init( panel, index, mod )
 		})
 		image:set_center_x( self._panel:w() * 0.5 )
 		image:set_top( padding )
-	else
+	elseif show_icon then
 
 		local no_image_panel = self._panel:panel({
 			w = BLTModItem.image_size,
@@ -152,7 +154,6 @@ function BLTModItem:init( panel, index, mod )
 	end
 
 	-- Mod settings
-	local icon_size = 32
 	local icon_y = padding
 
 	if not mod:IsUndisablable() then
@@ -194,11 +195,55 @@ function BLTModItem:init( panel, index, mod )
 			w = icon_size,
 			h = icon_size,
 		})
-		icon_updates:set_left( padding )
-		icon_updates:set_top( icon_y )
+		if show_icon then
+			icon_updates:set_left( padding )
+			icon_updates:set_top( icon_y )
+		else
+			icon_updates:set_right( self._panel:w() - padding )
+			icon_updates:set_top( padding )
+		end
 
+		-- Animate the icon. When the update is done, the animation ends and
+		-- sets the icon to the appropriate colour
+		icon_updates:animate(callback(self, self, "_clbk_animate_update_icon"))
 	end
 
+end
+
+function BLTModItem:_clbk_animate_update_icon(icon)
+	-- While the update is still in progress, fade the icon
+	local time = 0
+	while self._mod:IsCheckingForUpdates() do
+		local dt = coroutine.yield()
+		time = time + dt
+
+		-- Fade colour from 0 to 1 to 0 over the course of two seconds
+		local colour = time % 2 -- From 0-2
+
+		if colour > 1 then
+			-- If the colour has gone past half way, subtract it from two. This
+			-- causes it to decrease starting from 1 (as 2-1=1) to 0 (as 2-2=0).
+			colour = 2 - colour
+		end
+
+		-- Lerb between white and blue to make it fade in and out
+		icon:set_color(math.lerp(Color.white, Color.blue, colour))
+	end
+
+	-- Check for corrupted downloads, and set the colour accordingly
+	if self._mod:GetUpdateError() then
+		icon:set_color( Color.red )
+		return
+	end
+
+	-- Check if the update is resolved
+	if BLT.Downloads:get_pending_downloads_for(self._mod) then
+		icon:set_color( Color.yellow )
+		return
+	end
+
+	-- Update check finished and no updates are due, colour it white
+	icon:set_color( Color.white )
 end
 
 function BLTModItem:_get_col_row( index )

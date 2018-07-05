@@ -20,6 +20,19 @@ function BLTDownloadManager:get_pending_download( update )
 	return false
 end
 
+function BLTDownloadManager:get_pending_downloads_for( mod )
+	local result = nil
+	for _, update in ipairs( mod:GetUpdates() ) do
+		for i, download in ipairs( self._pending_downloads ) do
+			if download.update:GetId() == update:GetId() then
+				if not result then result = {} end
+				table.insert(result, download)
+			end
+		end
+	end
+	return result or false
+end
+
 function BLTDownloadManager:pending_downloads()
 	return self._pending_downloads
 end
@@ -82,6 +95,19 @@ function BLTDownloadManager:start_download( update )
 	-- Check if the download already going
 	if self:get_download( update ) then
 		log(string.format("[Downloads] Download already exists for %s (%s)", update:GetName(), update:GetParentMod():GetName()))
+		return false
+	end
+
+	-- If there is a .git or .hg file at the root of the mod, don't update it
+	-- the dev has most likely misclicked, so let's not wipe their work
+	local moddir = Application:nice_path( update:GetInstallDirectory() .. "/" .. update:GetInstallFolder(), true )
+	if file.DirectoryExists(moddir .. ".hg") or file.DirectoryExists(moddir .. ".git") then
+		QuickMenu:new(
+			"Update Blocked", -- TODO i18n
+			"Mercerial or Git version control are in use for this mod, update blocked", -- TODO i18n
+			{},
+			true
+		)
 		return false
 	end
 

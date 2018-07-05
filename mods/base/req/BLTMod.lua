@@ -36,6 +36,7 @@ function BLTMod:init( ident, data )
 	self.disable_safe_mode = data["disable_safe_mode"] or false
 	self.undisablable = data["undisablable"] or false
 	self.safe_mode = true
+	self.library = data["is_library"] or false
 
 	-- Parse color info
 	-- Stored as a table until first requested due to Color not existing yet
@@ -364,6 +365,15 @@ function BLTMod:IsCheckingForUpdates()
 	return false
 end
 
+function BLTMod:GetUpdateError()
+	for _, update in ipairs(self:GetUpdates()) do
+		if update:GetError() then
+			return update:GetError(), update
+		end
+	end
+	return false
+end
+
 function BLTMod:clbk_check_for_updates( update, required, reason )
 
 	self._update_cache = self._update_cache or {}
@@ -538,6 +548,10 @@ end
 
 function BLTMod:GetSuperMod()
 	return self.supermod
+end
+
+function BLTMod:IsLibrary()
+	return self.library
 end
 
 function BLTMod:__tostring()
