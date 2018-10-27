@@ -188,6 +188,13 @@ function table.script_merge(base_tbl, new_tbl)
                                 table.remove(base_tbl, index)
                             else
                                 base_tbl[index] = nil
+							end
+						elseif mode == "insert" then
+							for i, tbl in pairs(sub) do
+                                if type(tbl) == "table" and tonumber(i) then
+                                    table.insert(found_tbl, tbl)
+                                    break
+                                end
                             end
                         end
                     end
@@ -582,7 +589,7 @@ function BeardLib.Utils:CleanOutfitString(str, is_henchman)
 			end
 		end
 
-		list.grenade = self:GetSpoofedGrenade(list.grenade)
+		--list.grenade = self:GetSpoofedGrenade(list.grenade)
 	end
 	return self:OutfitStringFromList(list, is_henchman)
 end
@@ -783,6 +790,11 @@ function BeardLib.Utils:UrlEncode(str)
 end
 
 function BeardLib.Utils:ModExists(name)
+	local mod = self:FindMod(name)
+	return mod and mod:IsEnabled() or false
+end
+
+function BeardLib.Utils:ModLoaded(name)
 	return self:FindMod(name) ~= nil
 end
 
@@ -791,14 +803,6 @@ function BeardLib.Utils:FindMod(name)
         if mod.Name == name then
             return mod
         end
-    end
-    local add = BeardLib.managers.AddFramework:GetModByName(name)
-    if add then
-        return add
-    end
-    local map = BeardLib.managers.MapFramework:GetModByName(name)
-    if map then
-        return map
     end
     return nil
 end

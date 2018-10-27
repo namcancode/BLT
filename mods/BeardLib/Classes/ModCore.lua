@@ -31,21 +31,16 @@ function ModCore:init(config_path, load_modules)
 	
 	self:LoadConfigFile(config_path)
 	table.insert(BeardLib.Mods, self)
-	
-	if self._config and not self._config.min_lib_ver or self._config.min_lib_ver <= BeardLib.Version then
-		if load_modules == nil or load_modules then
-			self:init_modules()
-		end
-	elseif self._config then
-		self:log("[ERROR] BeardLib version %s or above is required to run the mod.", tostring(self._config.min_lib_ver))
-		self._disabled = true
-        return
-	end
+	self:pre_init_modules(load_modules)
 end
 
 function ModCore:post_init(ignored_modules)
-    if self._disabled then
+    if self._disabled or self._post_init_done then
         return
+	end
+
+	if self._core_class then
+		self._core_class:PreInit()
 	end
 
 	for _, module in pairs(self._modules) do
@@ -68,7 +63,8 @@ function ModCore:post_init(ignored_modules)
         if clbk then
             clbk()
         end
-    end
+	end
+	self._post_init_done = true
 end
 
 function ModCore:LoadConfigFile(path)
@@ -76,6 +72,7 @@ function ModCore:LoadConfigFile(path)
     local config = ScriptSerializer:from_custom_xml(file:read("*all"))
 
     self.Name = config.name or tostring(table.remove(string.split(self.ModPath, "/")))
+	self.Priority = tonumber(config.priority) or self.Priority
     if not self._disabled then
         if config.global_key then
             self.global = config.global_key
@@ -86,7 +83,19 @@ function ModCore:LoadConfigFile(path)
     end
 
     self._clean_config = deep_clone(config)
-    self._config = config
+	self._config = config
+end
+
+function ModCore:pre_init_modules(load_modules)
+	if self._config and not self._config.min_lib_ver or self._config.min_lib_ver <= BeardLib.Version then
+		if load_modules == nil or load_modules then
+			self:init_modules()
+		end
+	elseif self._config then
+		self:log("[ERROR] BeardLib version %s or above is required to run the mod.", tostring(self._config.min_lib_ver))
+		self._disabled = true
+        return
+	end
 end
 
 local load_first = {
@@ -219,6 +228,7 @@ function ModCore:RegisterHook(source_file, file, type)
 	end
 end
 
+function ModCore:PreInit() end
 function ModCore:Init() end
 function ModCore:GetPath() return self.ModPath end
 function ModCore:Disabled() return self._disabled end
