@@ -25,8 +25,6 @@ function Framework:init()
 	end)
 
 	self:Load()
-	self:SortMods()
-	self:InitMods()
 end
 
 function Framework:CheckModQueue(post, file)
@@ -58,24 +56,21 @@ function Framework:CheckModQueue(post, file)
 	self._waiting_to_load = next_queue
 end
 
-function Framework:SortMods()
-	table.sort(self._sorted_mods, function(a,b)
-        return a.Priority < b.Priority
-	end)
-	table.sort(self._waiting_to_load, function(a,b)
-        return a.Priority < b.Priority
-	end)
+function Framework:Load()
+	self:FindMods()
+	self:SortMods()
+	self:InitMods()
 end
 
-function Framework:Load()
-    local dirs = FileIO:GetFolders(self._directory)
+function Framework:FindMods()
+	local dirs = FileIO:GetFolders(self._directory)
     if dirs then
         for _, dir in pairs(dirs) do
             if not self._ignore_folders[dir] then
                 local p = path:CombineDir(self._directory, dir)
                 local main_file = path:Combine(p, self.main_file_name)
                 if FileIO:Exists(main_file) then
-                    if not self._loaded_mods[dir] then
+					if not self._loaded_mods[dir] then
                         self:LoadMod(dir, p, main_file)
                     end
                 elseif not self._ignore_detection_errors and not self._ignored_configs[main_file] then
@@ -87,11 +82,21 @@ function Framework:Load()
 	end
 end
 
+function Framework:SortMods()
+	table.sort(self._sorted_mods, function(a,b)
+        return a.Priority > b.Priority
+	end)
+	table.sort(self._waiting_to_load, function(a,b)
+        return a.Priority > b.Priority
+	end)
+end
+
 function Framework:InitMods()
 	for _, mod in pairs(self._sorted_mods) do
 		local config = mod._config
 		if not config.post_hook and not config.pre_hook then
 			mod:pre_init_modules(self.auto_init_modules)
+			self:log("Initialized Mod: %s", mod.ModPath)
 		end
 	end
 end
@@ -118,6 +123,10 @@ function Framework:log(s, ...)
 	BeardLib:log("["..cap(self.type_name).." Framework] " .. s, ...)
 end
 
+function Framework:DevLog(s, ...)
+	BeardLib:DevLog("["..cap(self.type_name).." Framework] " .. s, ...)
+end
+
 function Framework:GetModByDir(dir)
     return self._loaded_mods[dir]
 end
@@ -137,7 +146,7 @@ function Framework:LoadMod(dir, path, main_file)
 	rawset(_G, "ModPath", path)
 	local success, mod = pcall(function() return self._mod_core:new(main_file, false) end)
 	if success then
-		self:log("Loaded Config: %s", path)
+		self:DevLog("Loaded Config: %s", path)
 		local framework = mod._config and mod._config.framework and BeardLib.Frameworks[mod._config.framework] or self
 		if framework then
 			framework:AddMod(dir, mod)

@@ -7,7 +7,6 @@ if F == "weaponfactorymanager" then
     function WeaponFactoryManager:unpack_blueprint_from_string(factory_id, ...)
         local factory = tweak_data.weapon.factory
         if not factory[factory_id] then
-            BeardLib:log("[Fixes][Warning] Weapon with the factory ID %s does not exist, returning empty table.", tostring(factory_id))
             return {}
         end
         return orig_unpack(self, factory_id, ...)
@@ -68,7 +67,7 @@ elseif F == "blackmarketmanager" then
     end
 elseif F == "crewmanagementgui" then
     local orig = CrewManagementGui.populate_primaries
-    --Blocks out custom weapons that are don't have support for AI.
+    --Blocks out custom weapons that don't have support for AI.
     function CrewManagementGui:populate_primaries(i, data, ...)
         local res = orig(self, i, data, ...)
         for k, v in ipairs(data) do
@@ -92,6 +91,16 @@ elseif F == "connectionnetworkhandler" then
         self._ignore_stage_settings_once = true
     end
     
+    --Sets the correct data out of NetworkPeer instead of straight from the parameters
+    Hooks:PostHook(ConnectionNetworkHandler, "sync_outfit", "BeardLibSyncOutfitProperly", function(self, outfit_string, outfit_version, outfit_signature, sender)
+        local peer = self._verify_sender(sender)
+        if not peer then
+            return
+        end
+    
+        peer:beardlib_reload_outfit()
+    end)
+
     local orig_sync_stage_settings = ConnectionNetworkHandler.sync_stage_settings
     function ConnectionNetworkHandler:sync_stage_settings(level_id_index, ...)
         if self._ignore_stage_settings_once then
@@ -227,5 +236,37 @@ elseif F == "dialogmanager" then
 				}
 			end
 		end
-	end)
+    end)
+elseif F == "networkpeer" then
+    local tradable_item_verif = NetworkPeer.tradable_verify_outfit
+    function NetworkPeer:tradable_verify_outfit(signature)
+        local outfit = self:blackmarket_outfit()
+        
+        if outfit.primary and outfit.primary.cosmetics then
+            if tweak_data.blackmarket.weapon_skins[outfit.primary.cosmetics.id].is_a_unlockable  then
+                return
+            end
+        else
+            return
+        end
+
+        if outfit.secondary and outfit.secondary.cosmetics then
+            if tweak_data.blackmarket.weapon_skins[outfit.secondary.cosmetics.id].is_a_unlockable  then
+                return
+            end
+        else
+            return
+        end
+
+        return tradable_item_verif(self, signature)
+    end
+elseif F == 'ingamewaitingforplayers' then
+    --[[--Fixes custom weapon not appearing at first
+    Hooks:PostHook(IngameWaitingForPlayersState, "_start_audio", "BeardLib.StartAudio", function()
+        DelayedCalls:Add("PleaseShowCorrectWeaponBrokenPieceOf", 1, function()
+            if managers.player:player_unit() then
+                managers.player:player_unit():inventory():_send_equipped_weapon()
+            end
+        end)
+    end)]]
 end

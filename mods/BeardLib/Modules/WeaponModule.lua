@@ -92,8 +92,10 @@ function WeaponModule:RegisterHook()
         if config.override then
             data = table.merge(data, config.override)
         end
-
-        w_self[config.id] = data
+	
+	 w_self[config.id] = data
+			
+        --w_self[config.id .. "_crew"] = npc_data
     end)
 
     Hooks:PostHook(TweakDataVR , "init", self._config.weapon.id .. "AddVRWeaponTweakData", function(vrself)
@@ -143,7 +145,9 @@ function WeaponModule:RegisterHook()
         }, config)
 
         w_self[config.id] = data
-        w_self[config.id .. "_npc"] = table.merge(clone(data), {unit = config.unit .. "_npc"})
+        local npc_data = clone(data)
+        npc_data.unit = npc_data.unit.."_npc"
+        w_self[config.id .. "_npc"] = npc_data
     end)
 
     Hooks:PostHook(UpgradesTweakData, "init", self._config.weapon.id .. "AddWeaponUpgradesData", function(u_self)

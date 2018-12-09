@@ -11,8 +11,12 @@
 	auto_image_color="true"
 	mod_override_dir="assets/mod_overrides/">
 	<load_modules>
-		<AssetUpdates id="14924" version="3.11" provider="modworkshop" use_local_dir="true" use_local_path="true" important="true"/>
+		<AssetUpdates id="14924" version="3.22" provider="modworkshop" use_local_dir="true" use_local_path="true" important="true"/>
 		<AddFiles directory="Assets">
+			<unit path="core/units/run_sequence_dummy/run_sequence_dummy" force_if_not_loaded="true"/>
+			<object path="core/units/run_sequence_dummy/run_sequence_dummy" force_if_not_loaded="true"/>
+			<sequence_manager path="core/units/run_sequence_dummy/run_sequence_dummy" force_if_not_loaded="true"/>
+			<physic_effect path="physic_effects/push_sphere" force_if_not_loaded="true"/>
 			<texture path="guis/textures/menu_ui_icons"/>
 			<texture path="guis/textures/beardlib_logo"/>
 		</AddFiles>
@@ -31,6 +35,7 @@
 			<hook source_file="lib/units/beings/player/huskplayermovement" file="NetworkHooks.lua"/>
 			<hook source_file="lib/units/beings/player/playerinventory" file="NetworkHooks.lua"/>
 			<hook source_file="lib/units/weapons/newraycastweaponbase" file="NetworkHooks.lua"/>
+			<hook source_file="lib/network/handlers/unitnetworkhandler" file="NetworkHooks.lua"/>
 			
 			<hook source_file="lib/network/base/handlers/connectionnetworkhandler" file="Fixes.lua"/>
 			<hook source_file="core/lib/managers/menu/items/coremenuitemslider" file="Fixes.lua"/>
@@ -43,6 +48,8 @@
 			<hook source_file="lib/managers/weaponfactorymanager" file="Fixes.lua"/>
 			<hook source_file="lib/managers/blackmarketmanager" file="Fixes.lua"/>
 			<hook source_file="lib/managers/dialogmanager" file="Fixes.lua"/>
+			<hook source_file="lib/network/base/networkpeer" file="Fixes.lua"/>
+			<hook source_file="lib/states/ingamewaitingforplayers" file="Fixes.lua"/>
 
 			<hook source_file="lib/setups/setup" file="OtherHooks.lua"/>
 			<hook source_file="lib/setups/gamesetup" file="OtherHooks.lua"/>
@@ -65,10 +72,17 @@
 			<hook source_file="lib/managers/menumanager" file="MenuManager.lua"/>
 			<hook source_file="lib/managers/menu/menuinput" file="MenuInput.lua"/>
 			<hook source_file="lib/managers/killzonemanager" file="KillzoneManager.lua"/>
+			<hook source_file="lib/managers/blackmarketmanager" file="BlackMarketManager.lua"/>
 		</Hooks>
 	</load_modules>
 	<classes>
 		<class file="Utils/Utils.lua"/>
+		<class file="Utils/Table.lua"/>
+		<class file="Utils/Path.lua"/>
+		<class file="Utils/String.lua"/>
+		<class file="Utils/Math.lua"/>
+		<class file="Utils/Input.lua"/>
+		<class file="Utils/Hooks.lua"/>
 		<class file="ModCore.lua"/>
 		<class file="CustomPackageManager.lua"/>
 		<class file="CustomSoundManager.lua" manager="sound"/>
@@ -105,13 +119,14 @@
 		<class file="Dialogs/DownloadDialog.lua"/>
 		<class file="Dialogs/SimpleSelectListDialog.lua"/>
 		<class file="Utils/MenuHelperPlus.lua"/>
-		<class file="Utils/JsonUtils.lua"/>
-		<class file="Utils/XmlUtils.lua"/>
+		<class file="Utils/JSON.lua"/>
+		<class file="Utils/XML.lua"/>
 		<class file="Utils/Builders.lua"/>
 		<class file="ModAssetUpdateManager.lua" manager="asset_update"/>
 		<class file="ModuleBase.lua"/>
 		<class file="Dialogs/MenuDialogManager.lua" manager="dialog"/>
 		<class file="BeardLibModsMenu.lua" manager="mods_menu"/>
+		<class file="WeaponSkinExtension.lua"/>
 	</classes>
 	<script_data_types>
 		<value_node value="sequence_manager"/>
